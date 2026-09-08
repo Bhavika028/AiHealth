@@ -1,0 +1,329 @@
+// ==============================================================================
+// PulseSync AI - Prisma Schema (PostgreSQL ORM)
+// ==============================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  PATIENT
+  DOCTOR
+  HOSPITAL_ADMIN
+  PHARMACY
+}
+
+enum VisitType {
+  FIRST_VISIT
+  REPEAT_VISIT
+}
+
+enum SeverityLevel {
+  Mild
+  Moderate
+  Severe
+}
+
+enum ConsultationStatus {
+  TRIAGED
+  IN_DOCTOR_QUEUE
+  UNDER_REVIEW
+  COMPLETED
+  REFERRED_ICU
+}
+
+enum PrescriptionStatus {
+  PENDING
+  DISPENSED
+  OUT_OF_STOCK
+}
+
+enum WardType {
+  ICU
+  GENERAL
+  EMERGENCY
+  PEDIATRIC
+}
+
+model User {
+  id                  String         @id @default(uuid())
+  email               String         @unique
+  name                String
+  phone               String?
+  role                UserRole       @default(PATIENT)
+  languagePreference  String         @default("en") @map("language_preference")
+  isActive            Boolean        @default(true) @map("is_active")
+  createdAt           DateTime       @default(now()) @map("created_at")
+  updatedAt           DateTime       @updatedAt @map("updated_at")
+
+  patientProfile      Patient?
+  doctorProfile       Doctor?
+  pharmacyStore       PharmacyStore?
+
+  @@map("users")
+}
+
+model Patient {
+  id                    String            @id @default(uuid())
+  userId                String            @unique @map("user_id")
+  fullName              String            @map("full_name")
+  age                   Int
+  dob                   DateTime?
+  gender                String
+  bloodGroup            String?           @map("blood_group")
+  existingConditions    Json              @default("[]") @map("existing_conditions")
+  allergies             Json              @default("[]")
+  currentMedications    Json              @default("[]") @map("current_medications")
+  medicalHistory        Json              @default("[]") @map("medical_history")
+  isChild               Boolean           @default(false) @map("is_child")
+  parentGuardianName    String?           @map("parent_guardian_name")
+  parentGuardianPhone   String?           @map("parent_guardian_phone")
+  emergencyContactName  String?           @map("emergency_contact_name")
+  emergencyContactPhone String?           @map("emergency_contact_phone")
+  insuranceProvider     String?           @map("insurance_provider")
+  insurancePolicyNo     String?           @map("insurance_policy_no")
+  insuranceIsActive     Boolean           @default(true) @map("insurance_is_active")
+  createdAt             DateTime          @default(now()) @map("created_at")
+  updatedAt             DateTime          @updatedAt @map("updated_at")
+
+  user                  User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  consultations         Consultation[]
+  doctorNotes           DoctorNote[]
+  prescriptions         Prescription[]
+  occupiedBeds          WardAndBed[]
+  qrTokens              PatientQRToken[]
+
+  @@map("patients")
+}
+
+model Clinic {
+  id              String         @id @default(uuid())
+  name            String
+  registrationNo  String?        @unique @map("registration_no")
+  address         String
+  city            String
+  phone           String?
+  email           String?
+  qrClinicCode    String?        @unique @map("qr_clinic_code")
+  createdAt       DateTime       @default(now()) @map("created_at")
+
+  doctors         Doctor[]
+  consultations   Consultation[]
+
+  @@map("clinics")
+}
+
+model Hospital {
+  id                String        @id @default(uuid())
+  name              String
+  registrationNo    String?       @unique @map("registration_no")
+  address           String
+  city              String
+  emergencyPhone    String?       @map("emergency_phone")
+  totalIcuBeds      Int           @default(0) @map("total_icu_beds")
+  totalGeneralBeds  Int           @default(0) @map("total_general_beds")
+  createdAt         DateTime      @default(now()) @map("created_at")
+
+  doctors           Doctor[]
+  wardsAndBeds      WardAndBed[]
+  referralNotes     DoctorNote[]
+
+  @@map("hospitals")
+}
+
+model Doctor {
+  id              String         @id @default(uuid())
+  userId          String         @unique @map("user_id")
+  clinicId        String?        @map("clinic_id")
+  hospitalId      String?        @map("hospital_id")
+  fullName        String         @map("full_name")
+  specialization  String
+  licenseNo       String?        @unique @map("license_no")
+  degreeProofUrl  String?        @map("degree_proof_url")
+  availableHours  Json?          @map("available_hours")
+  isVerified      Boolean        @default(true) @map("is_verified")
+  createdAt       DateTime       @default(now()) @map("created_at")
+
+  user            User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  clinic          Clinic?        @relation(fields: [clinicId], references: [id], onDelete: SetNull)
+  hospital        Hospital?      @relation(fields: [hospitalId], references: [id], onDelete: SetNull)
+  consultations   Consultation[]
+  doctorNotes     DoctorNote[]
+  prescriptions   Prescription[]
+  assignedBeds    WardAndBed[]
+
+  @@map("doctors")
+}
+
+model WardAndBed {
+  id                     String     @id @default(uuid())
+  hospitalId             String     @map("hospital_id")
+  wardName               String     @map("ward_name")
+  wardType               WardType   @map("ward_type")
+  bedNumber              String     @map("bed_number")
+  isOccupied             Boolean    @default(false) @map("is_occupied")
+  currentPatientId       String?    @map("current_patient_id")
+  assignedDoctorId       String?    @map("assigned_doctor_id")
+  admissionReason        String?    @map("admission_reason")
+  admissionDate          DateTime?  @map("admission_date")
+  estimatedDischargeDate DateTime?  @map("estimated_discharge_date")
+  createdAt              DateTime   @default(now()) @map("created_at")
+
+  hospital               Hospital   @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  currentPatient         Patient?   @relation(fields: [currentPatientId], references: [id], onDelete: SetNull)
+  assignedDoctor         Doctor?    @relation(fields: [assignedDoctorId], references: [id], onDelete: SetNull)
+
+  @@unique([hospitalId, wardName, bedNumber])
+  @@map("wards_and_beds")
+}
+
+model Consultation {
+  id                          String             @id @default(uuid())
+  patientId                   String             @map("patient_id")
+  clinicId                    String?            @map("clinic_id")
+  doctorId                    String?            @map("doctor_id")
+  visitType                   VisitType          @default(FIRST_VISIT) @map("visit_type")
+  chiefComplaint              String             @map("chief_complaint")
+  symptomDurationValue        Int?               @map("symptom_duration_value")
+  symptomDurationUnit         String?            @map("symptom_duration_unit")
+  symptomSeverity             SeverityLevel      @map("symptom_severity")
+  isRepeatVisit               Boolean            @default(false) @map("is_repeat_visit")
+  previousConsultationId      String?            @map("previous_consultation_id")
+  medicineTaken               Boolean            @default(false) @map("medicine_taken")
+  medicineTakenName           String?            @map("medicine_taken_name")
+  regularMedicationsConfirmed Boolean            @default(true) @map("regular_medications_confirmed")
+  existingConditionsConfirmed Boolean            @default(true) @map("existing_conditions_confirmed")
+  allergiesConfirmed          Boolean            @default(true) @map("allergies_confirmed")
+  warningSymptoms             Json               @default("[]") @map("warning_symptoms")
+  patientNotes                String?            @map("patient_notes")
+  branchResponses             Json               @default("{}") @map("branch_responses")
+  seasonalContext             String?            @map("seasonal_context")
+  status                      ConsultationStatus @default(TRIAGED)
+  isUrgent                    Boolean            @default(false) @map("is_urgent")
+  urgencyReason               String?            @map("urgency_reason")
+  createdAt                   DateTime           @default(now()) @map("created_at")
+  updatedAt                   DateTime           @updatedAt @map("updated_at")
+
+  patient                     Patient            @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  clinic                      Clinic?            @relation(fields: [clinicId], references: [id], onDelete: SetNull)
+  doctor                      Doctor?            @relation(fields: [doctorId], references: [id], onDelete: SetNull)
+  previousConsultation        Consultation?      @relation("ConsultationHistory", fields: [previousConsultationId], references: [id], onDelete: SetNull)
+  nextConsultations           Consultation[]     @relation("ConsultationHistory")
+  doctorNote                  DoctorNote?
+  prescriptions               Prescription[]
+
+  @@map("consultations")
+}
+
+model DoctorNote {
+  id                    String        @id @default(uuid())
+  consultationId        String        @unique @map("consultation_id")
+  doctorId              String        @map("doctor_id")
+  patientId             String        @map("patient_id")
+  vitalBp               String?       @map("vital_bp")
+  vitalPulse            Int?          @map("vital_pulse")
+  vitalTemperature      String?       @map("vital_temperature")
+  vitalSpo2             Int?          @map("vital_spo2")
+  vitalGlucose          String?       @map("vital_glucose")
+  aiGeneratedSummary    String?       @map("ai_generated_summary")
+  aiRiskFlags           Json          @default("[]") @map("ai_risk_flags")
+  clinicalObservations  String?       @map("clinical_observations")
+  confirmedDiagnosis    String        @map("confirmed_diagnosis")
+  treatmentPlan         String?       @map("treatment_plan")
+  followUpInstructions  String?       @map("follow_up_instructions")
+  followUpDate          DateTime?     @map("follow_up_date")
+  isEmergencyTransfer   Boolean       @default(false) @map("is_emergency_transfer")
+  referralType          String        @default("NONE") @map("referral_type")
+  referralHospitalId    String?       @map("referral_hospital_id")
+  referralDoctorName    String?       @map("referral_doctor_name")
+  referralDestinationName String?     @map("referral_destination_name")
+  referralReason        String?       @map("referral_reason")
+  transferStatus        String        @default("NONE") @map("transfer_status")
+  confirmationPin       String?       @map("confirmation_pin")
+  isFinalized           Boolean       @default(false) @map("is_finalized")
+  createdAt             DateTime      @default(now()) @map("created_at")
+  updatedAt             DateTime      @updatedAt @map("updated_at")
+
+  consultation          Consultation  @relation(fields: [consultationId], references: [id], onDelete: Cascade)
+  doctor                Doctor        @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  patient               Patient       @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  referralHospital      Hospital?     @relation(fields: [referralHospitalId], references: [id], onDelete: SetNull)
+  prescriptions         Prescription[]
+
+  @@map("doctor_notes")
+}
+
+model Prescription {
+  id                 String             @id @default(uuid())
+  consultationId     String?            @map("consultation_id")
+  doctorNoteId       String?            @map("doctor_note_id")
+  patientId          String             @map("patient_id")
+  doctorId           String             @map("doctor_id")
+  pharmacyId         String?            @map("pharmacy_id")
+  medicines          Json               @default("[]")
+  status             PrescriptionStatus @default(PENDING)
+  dispenseAlertSent  Boolean            @default(false) @map("dispense_alert_sent")
+  dispensedAt        DateTime?          @map("dispensed_at")
+  notes              String?
+  createdAt          DateTime           @default(now()) @map("created_at")
+
+  consultation       Consultation?      @relation(fields: [consultationId], references: [id], onDelete: SetNull)
+  doctorNote         DoctorNote?        @relation(fields: [doctorNoteId], references: [id], onDelete: SetNull)
+  patient            Patient            @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  doctor             Doctor             @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  pharmacy           PharmacyStore?     @relation(fields: [pharmacyId], references: [id], onDelete: SetNull)
+
+  @@map("prescriptions")
+}
+
+model PharmacyStore {
+  id             String         @id @default(uuid())
+  userId         String         @unique @map("user_id")
+  storeName      String         @map("store_name")
+  licenseNo      String?        @unique @map("license_no")
+  address        String
+  phone          String?
+  createdAt      DateTime       @default(now()) @map("created_at")
+
+  user           User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  inventory      Inventory[]
+  prescriptions  Prescription[]
+
+  @@map("pharmacy_stores")
+}
+
+model Inventory {
+  id                 String        @id @default(uuid())
+  pharmacyId         String        @map("pharmacy_id")
+  medicineName       String        @map("medicine_name")
+  genericName        String?       @map("generic_name")
+  dosageForm         String        @map("dosage_form")
+  stockQuantity      Int           @default(0) @map("stock_quantity")
+  lowStockThreshold  Int           @default(10) @map("low_stock_threshold")
+  price              Decimal       @default(0.0) @db.Decimal(10, 2)
+  lastRestockedAt    DateTime      @default(now()) @map("last_restocked_at")
+
+  pharmacy           PharmacyStore @relation(fields: [pharmacyId], references: [id], onDelete: Cascade)
+
+  @@unique([pharmacyId, medicineName])
+  @@map("inventory")
+}
+
+model PatientQRToken {
+  id           String    @id @default(uuid())
+  patientId    String    @map("patient_id")
+  qrType       String    @map("qr_type")
+  tokenPayload String    @map("token_payload")
+  expiresAt    DateTime? @map("expires_at")
+  isActive     Boolean   @default(true) @map("is_active")
+  createdAt    DateTime  @default(now()) @map("created_at")
+
+  patient      Patient   @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@map("patient_qr_tokens")
+}
