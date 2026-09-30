@@ -16,6 +16,7 @@ def seed_database():
     print("[SEED] Database schema initialized. Fake data seeding is disabled to ensure only real registered users and live data are used.")
     return
 
+    if False:
         # 1. USERS
         patient_user = User(
             id="usr_patient_rahul",

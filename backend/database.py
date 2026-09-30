@@ -40,7 +40,7 @@ def create_active_engine(db_url: str):
             max_overflow=20,
             pool_recycle=300,
             pool_pre_ping=True,
-            connect_args={"connect_timeout": 3} if "postgresql" in db_url else {}
+            connect_args={"connect_timeout": 2} if "postgresql" in db_url else {}
         )
         # Verify connection
         with test_engine.connect() as conn:
@@ -95,19 +95,58 @@ def init_db() -> None:
                 conn.execute(text("ALTER TABLE pharmacy_stores ADD COLUMN IF NOT EXISTS last_active_at TIMESTAMP;"))
                 conn.commit()
             else:
-                # SQLite column migration helper
+                # SQLite column migration helper - ensures all required columns exist in SQLite
                 sqlite_cols = [
                     ("users", "password_hash", "VARCHAR(255)"),
+                    ("users", "language_preference", "VARCHAR(16) DEFAULT 'en'"),
+                    
+                    ("patients", "address", "TEXT"),
+                    ("patients", "city", "VARCHAR(128)"),
                     ("patients", "latitude", "FLOAT"),
                     ("patients", "longitude", "FLOAT"),
+                    ("patients", "aadhaar_card_no", "VARCHAR(32)"),
+                    ("patients", "pan_card_no", "VARCHAR(32)"),
+                    ("patients", "has_insurance", "BOOLEAN DEFAULT 1"),
+                    ("patients", "insurance_claimed", "BOOLEAN DEFAULT 0"),
+                    ("patients", "insurance_provider", "VARCHAR(255)"),
+                    ("patients", "insurance_policy_no", "VARCHAR(128)"),
+                    ("patients", "insurance_is_active", "BOOLEAN DEFAULT 1"),
+                    
                     ("clinics", "latitude", "FLOAT"),
                     ("clinics", "longitude", "FLOAT"),
+                    
+                    ("doctors", "education", "VARCHAR(255)"),
+                    ("doctors", "clinic_name", "VARCHAR(255)"),
+                    ("doctors", "clinic_address", "TEXT"),
+                    ("doctors", "patients_checked_count", "INTEGER DEFAULT 0"),
+                    ("doctors", "degree_proof_url", "TEXT"),
+                    ("doctors", "available_hours", "TEXT DEFAULT '{}'"),
+                    ("doctors", "is_verified", "BOOLEAN DEFAULT 1"),
+                    
+                    ("hospitals", "treatments", "TEXT DEFAULT '[]'"),
+                    ("hospitals", "total_doctors", "INTEGER DEFAULT 12"),
+                    ("hospitals", "total_wards", "INTEGER DEFAULT 4"),
                     ("hospitals", "latitude", "FLOAT"),
                     ("hospitals", "longitude", "FLOAT"),
+                    ("hospitals", "emergency_phone", "VARCHAR(32)"),
+                    
+                    ("pharmacy_stores", "pharmacist_name", "VARCHAR(255)"),
+                    ("pharmacy_stores", "city", "VARCHAR(128)"),
                     ("pharmacy_stores", "latitude", "FLOAT"),
                     ("pharmacy_stores", "longitude", "FLOAT"),
                     ("pharmacy_stores", "is_online", "BOOLEAN DEFAULT 0"),
-                    ("pharmacy_stores", "last_active_at", "DATETIME")
+                    ("pharmacy_stores", "last_active_at", "DATETIME"),
+                    ("pharmacy_stores", "phone", "VARCHAR(32)"),
+                    
+                    ("doctor_notes", "is_emergency_transfer", "BOOLEAN DEFAULT 0"),
+                    ("doctor_notes", "referral_type", "VARCHAR(64) DEFAULT 'NONE'"),
+                    ("doctor_notes", "referral_hospital_id", "VARCHAR(64)"),
+                    ("doctor_notes", "referral_doctor_name", "VARCHAR(255)"),
+                    ("doctor_notes", "referral_destination_name", "VARCHAR(255)"),
+                    ("doctor_notes", "referral_reason", "TEXT"),
+                    ("doctor_notes", "transfer_status", "VARCHAR(64) DEFAULT 'NONE'"),
+                    ("doctor_notes", "confirmation_pin", "VARCHAR(16)"),
+                    ("doctor_notes", "is_finalized", "BOOLEAN DEFAULT 0"),
                 ]
                 for tbl, col, col_type in sqlite_cols:
                     try:

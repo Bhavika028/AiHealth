@@ -11,7 +11,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800;900&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <!-- Leaflet.js Interactive Map CSS -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <link rel="stylesheet" href="/static/style.css">
+    <link rel="stylesheet" href="/static/style.css?v=20260930_3">
 </head>
 <body>
 
@@ -448,26 +448,80 @@
 
                         <div class="dual-qr-grid">
                             
-                            <!-- QR 1: Medical Profile QR -->
+                            <!-- QR 1: Medical Profile QR & Text Card -->
                             <div class="qr-sub-box">
                                 <div class="qr-sub-header">
                                     <span class="qr-type-badge indigo">QR 1: Medical Profile</span>
-                                    <span class="qr-status-indicator">● Scannable</span>
+                                    <div class="qr-tab-nav">
+                                        <button type="button" id="prof-tab-btn-qr" class="qr-tab-nav-btn active" onclick="switchQrCardTab('prof', 'qr')">📷 QR Code</button>
+                                        <button type="button" id="prof-tab-btn-text" class="qr-tab-nav-btn" onclick="switchQrCardTab('prof', 'text')">📄 Text Info</button>
+                                    </div>
                                 </div>
-                                <img id="pat-profile-qr-img" class="qr-dynamic-img" src="" alt="Medical Profile QR" onclick="expandQrModal(this.src, 'Patient Medical Profile QR')">
-                                <span class="qr-caption">Instant Doctor Clinic Intake Scan</span>
+
+                                <!-- QR View Pane -->
+                                <div id="prof-pane-qr" style="width:100%; display:flex; flex-direction:column; align-items:center;">
+                                    <img id="pat-profile-qr-img" class="qr-dynamic-img" src="" alt="Medical Profile QR" onclick="expandQrModal(this.src, 'Patient Medical Profile QR', this.getAttribute('data-web-url'), this.getAttribute('data-token'))">
+                                    <span class="qr-caption">Scan with any phone camera to view patient details</span>
+                                    <div style="margin-top:10px;">
+                                        <button type="button" class="btn-sm-primary" style="padding:6px 14px; font-size:0.8rem; font-weight:700; cursor:pointer;" onclick="openPatientCard('PROFILE_INTAKE')">
+                                            🌐 Open Card
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <!-- Text Details Pane -->
+                                <div id="prof-pane-text" style="width:100%; display:none;">
+                                    <div id="prof-raw-text" class="qr-text-card">
+                                        Loading patient medical details...
+                                    </div>
+                                    <div style="display:flex; justify-content:center; gap:8px;">
+                                        <button type="button" class="btn-sm-secondary" style="padding:5px 12px; font-size:0.75rem;" onclick="copyQrTextDetails('prof')">
+                                            📋 Copy Text
+                                        </button>
+                                        <button type="button" class="btn-sm-primary" style="padding:5px 12px; font-size:0.75rem;" onclick="openPatientCard('PROFILE_INTAKE')">
+                                            🌐 Open Card
+                                        </button>
+                                    </div>
+                                </div>
                             </div>
 
-                            <!-- QR 2: Insurance Claim / Medical Pass QR -->
+                            <!-- QR 2: Insurance Claim / Medical Pass QR & Text Card -->
                             <div class="qr-sub-box">
                                 <div class="qr-sub-header">
-                                    <span class="qr-type-badge teal">QR 2: Insurance / Pass</span>
-                                    <span class="qr-status-indicator">● Active</span>
+                                    <span class="qr-type-badge teal">QR 2: Insurance Pass</span>
+                                    <div class="qr-tab-nav">
+                                        <button type="button" id="ins-tab-btn-qr" class="qr-tab-nav-btn active" onclick="switchQrCardTab('ins', 'qr')">📷 QR Code</button>
+                                        <button type="button" id="ins-tab-btn-text" class="qr-tab-nav-btn" onclick="switchQrCardTab('ins', 'text')">📄 Text Info</button>
+                                    </div>
                                 </div>
-                                <img id="pat-insurance-qr-img" class="qr-dynamic-img" src="" alt="Insurance Claim QR" onclick="expandQrModal(this.src, 'Patient Insurance & Medical Pass QR')">
-                                <div class="insurance-mini-meta">
-                                    <span class="ins-status-tag" id="pat-ins-claim-tag">Insurance Claimed: NO</span>
-                                    <div style="font-size:0.75rem; color:#475569;" id="pat-ins-policy-display">Policy: SH-MED-992140</div>
+
+                                <!-- QR View Pane -->
+                                <div id="ins-pane-qr" style="width:100%; display:flex; flex-direction:column; align-items:center;">
+                                    <img id="pat-insurance-qr-img" class="qr-dynamic-img" src="" alt="Insurance Claim QR" onclick="expandQrModal(this.src, 'Patient Insurance & Medical Pass QR', this.getAttribute('data-web-url'), this.getAttribute('data-token'))">
+                                    <div class="insurance-mini-meta" style="margin-top:6px;">
+                                        <span class="ins-status-tag" id="pat-ins-claim-tag">Insurance Claimed: NO</span>
+                                        <div style="font-size:0.75rem; color:#475569;" id="pat-ins-policy-display">Policy: SH-MED-992140</div>
+                                    </div>
+                                    <div style="margin-top:8px;">
+                                        <button type="button" class="btn-sm-primary" style="padding:6px 14px; font-size:0.8rem; font-weight:700; background:#0d9488; cursor:pointer;" onclick="openPatientCard('INSURANCE_CLAIM')">
+                                            🛡️ Open Pass
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <!-- Text Details Pane -->
+                                <div id="ins-pane-text" style="width:100%; display:none;">
+                                    <div id="ins-raw-text" class="qr-text-card">
+                                        Loading insurance pass details...
+                                    </div>
+                                    <div style="display:flex; justify-content:center; gap:8px;">
+                                        <button type="button" class="btn-sm-secondary" style="padding:5px 12px; font-size:0.75rem;" onclick="copyQrTextDetails('ins')">
+                                            📋 Copy Text
+                                        </button>
+                                        <button type="button" class="btn-sm-primary" style="padding:5px 12px; font-size:0.75rem; background:#0d9488;" onclick="openPatientCard('INSURANCE_CLAIM')">
+                                            🛡️ Open Pass
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
 
@@ -1089,13 +1143,25 @@
     
     <!-- QR Fullscreen Modal -->
     <div id="qr-expand-modal" class="modal-backdrop">
-        <div class="modal-content" style="text-align:center;">
+        <div class="modal-content" style="text-align:center; max-width:440px;">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">
                 <h3 id="qr-modal-title" style="font-family:var(--font-heading); font-size:1.15rem; color:#0f172a;">QR Code</h3>
                 <button type="button" class="btn-close-modal" onclick="closeQrModal()">✕</button>
             </div>
-            <img id="qr-expanded-img" src="" alt="Expanded QR" style="width:260px; height:260px; border-radius:16px; margin:0 auto; box-shadow:0 8px 25px rgba(0,0,0,0.15);">
-            <p style="font-size:0.8rem; color:#64748b; margin-top:1rem;">Scan with any QR scanner to verify medical details.</p>
+            <img id="qr-expanded-img" src="" alt="Expanded QR" style="width:240px; height:240px; border-radius:16px; margin:0 auto; box-shadow:0 8px 25px rgba(0,0,0,0.15);">
+            <p style="font-size:0.82rem; color:#64748b; margin-top:0.75rem;">Scan with any phone camera to view complete patient details.</p>
+            
+            <div style="margin-top:1rem; display:flex; gap:8px; justify-content:center; flex-wrap:wrap;">
+                <a id="qr-modal-open-link" href="#" target="_blank" class="btn-sm-primary" style="text-decoration:none; display:inline-flex; align-items:center; gap:6px; padding:8px 16px;">
+                    🌐 Open Patient Web Card
+                </a>
+                <button type="button" class="btn-sm-secondary" style="padding:8px 14px;" onclick="copyQrLinkFromModal()">
+                    📋 Copy Link
+                </button>
+            </div>
+            
+            <div id="qr-modal-link-display" style="margin-top:0.75rem; padding:8px 12px; background:#f1f5f9; border-radius:8px; font-size:0.75rem; color:#475569; word-break:break-all; font-family:monospace;">
+            </div>
         </div>
     </div>
 
@@ -1127,6 +1193,69 @@
 
     <!-- Leaflet.js Interactive Map Script -->
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <script src="/static/app.js"></script>
+    <script src="/static/app.js?v=20260930_3"></script>
+    <script>
+    // Robust Global Handlers for QR Card Tabs and Open Card
+    window.switchQrCardTab = function(cardKey, tabKey) {
+        var qrPane = document.getElementById(cardKey + '-pane-qr');
+        var textPane = document.getElementById(cardKey + '-pane-text');
+        var btnQr = document.getElementById(cardKey + '-tab-btn-qr');
+        var btnText = document.getElementById(cardKey + '-tab-btn-text');
+
+        if (qrPane && textPane) {
+            if (tabKey === 'text') {
+                qrPane.style.setProperty('display', 'none', 'important');
+                textPane.style.setProperty('display', 'block', 'important');
+                if (btnQr) btnQr.classList.remove('active');
+                if (btnText) btnText.classList.add('active');
+            } else {
+                qrPane.style.setProperty('display', 'flex', 'important');
+                textPane.style.setProperty('display', 'none', 'important');
+                if (btnQr) btnQr.classList.add('active');
+                if (btnText) btnText.classList.remove('active');
+            }
+        }
+    };
+
+    window.openPatientCard = function(qrType) {
+        var patId = "";
+        try {
+            if (window.currentUser) {
+                patId = window.currentUser.patient_id || window.currentUser.id;
+            }
+            if (!patId) {
+                var saved = JSON.parse(localStorage.getItem("pulsesync_user") || "{}");
+                patId = saved.patient_id || saved.id || "";
+            }
+        } catch (e) {}
+
+        if (!patId) {
+            var img = document.getElementById("pat-profile-qr-img");
+            if (img && img.getAttribute("data-web-url")) {
+                var parts = img.getAttribute("data-web-url").split("/");
+                patId = parts[parts.length - 1];
+            }
+        }
+
+        if (!patId) {
+            patId = "pat_rahul_mishra";
+        }
+
+        var path = (qrType === 'INSURANCE_CLAIM') ? ('/qr/insurance/' + patId) : ('/qr/patient/' + patId);
+        window.open(path, '_blank');
+    };
+
+    window.copyQrTextDetails = function(cardKey) {
+        var textEl = document.getElementById(cardKey + '-raw-text');
+        if (!textEl) return;
+        var text = textEl.textContent.trim();
+        navigator.clipboard.writeText(text).then(function() {
+            if (window.showToast) window.showToast("Details copied to clipboard!", "success");
+            else alert("Copied to clipboard!");
+        }).catch(function() {
+            if (window.showToast) window.showToast("Copied details", "info");
+        });
+    };
+    </script>
 </body>
 </html>

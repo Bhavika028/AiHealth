@@ -32,8 +32,8 @@ if %errorlevel% neq 0 (
     pip install -r requirements.txt
 )
 
-echo [2/3] Starting PulseSync AI Server on http://127.0.0.1:8000 ...
-start "PulseSync AI Server" cmd /k "title PulseSync AI Server && cd /d "%~dp0" && python -m uvicorn backend.main:app --reload --host 127.0.0.1 --port 8000"
+echo [2/3] Starting PulseSync AI Server on http://0.0.0.0:8000 (accessible on LAN & local)...
+start "PulseSync AI Server" cmd /k "title PulseSync AI Server && cd /d "%~dp0" && python -m uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000"
 
 echo [3/3] Waiting for server to initialize...
 timeout /t 3 >nul

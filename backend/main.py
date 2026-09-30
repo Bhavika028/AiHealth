@@ -39,6 +39,19 @@ app.include_router(qr_engine.router)
 app.include_router(clinical.router)
 app.include_router(realtime.router)
 
+# Direct Public QR Verification Routes (Easily scannable by mobile phones)
+from .database import get_db
+from sqlalchemy.orm import Session
+from fastapi import Depends
+
+@app.get("/qr/patient/{patient_id}")
+def qr_patient_card(patient_id: str, db: Session = Depends(get_db)):
+    return qr_engine.view_patient_public_card(patient_id, db)
+
+@app.get("/qr/insurance/{patient_id}")
+def qr_insurance_card(patient_id: str, db: Session = Depends(get_db)):
+    return qr_engine.view_insurance_public_card(patient_id, db)
+
 # Health & Metrics Endpoint
 @app.get("/api/health")
 def health_check():
@@ -59,7 +72,14 @@ if os.path.exists(frontend_path):
 def serve_frontend_root():
     index_file = os.path.join(frontend_path, "index.html")
     if os.path.exists(index_file):
-        return FileResponse(index_file)
+        return FileResponse(
+            index_file,
+            headers={
+                "Cache-Control": "no-cache, no-store, must-revalidate",
+                "Pragma": "no-cache",
+                "Expires": "0"
+            }
+        )
     return {
         "message": "PulseSync AI API is active. Visit /docs for Swagger UI documentation.",
         "api_docs": "/docs"

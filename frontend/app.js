@@ -43,14 +43,20 @@ document.addEventListener("DOMContentLoaded", async () => {
                 currentUser = verifyData.user;
                 localStorage.setItem("pulsesync_user", JSON.stringify(currentUser));
                 showDashboardView(currentUser);
-            } else if (savedUser) {
-                currentUser = JSON.parse(savedUser);
-                showDashboardView(currentUser);
             } else {
+                // Token expired or invalid - clear stale session
+                localStorage.removeItem("pulsesync_jwt_token");
+                localStorage.removeItem("pulsesync_token");
+                localStorage.removeItem("pulsesync_user");
+                currentUser = null;
+                currentToken = null;
                 showAuthPortalView();
             }
         } catch (e) {
             console.error("Session restoration error:", e);
+            localStorage.removeItem("pulsesync_jwt_token");
+            localStorage.removeItem("pulsesync_token");
+            localStorage.removeItem("pulsesync_user");
             showAuthPortalView();
         }
     } else {
@@ -226,7 +232,14 @@ async function handleLoginSubmit(event) {
             body: JSON.stringify({ email, password, role: selectedAuthRole })
         });
 
-        const data = await res.json();
+        let data;
+        const text = await res.text();
+        try {
+            data = JSON.parse(text);
+        } catch (_) {
+            data = { success: false, detail: text || `HTTP ${res.status} Error` };
+        }
+
         if (res.ok && data.success) {
             currentToken = data.access_token;
             currentUser = data.user;
@@ -355,7 +368,14 @@ async function handleRegisterSubmit(event) {
             body: JSON.stringify(payload)
         });
 
-        const data = await res.json();
+        let data;
+        const text = await res.text();
+        try {
+            data = JSON.parse(text);
+        } catch (_) {
+            data = { success: false, detail: text || `HTTP ${res.status} Error` };
+        }
+
         if (res.ok && data.success) {
             currentToken = data.access_token;
             currentUser = data.user;
@@ -495,22 +515,140 @@ async function hydratePatientDashboard(user) {
         if (insBadge) insBadge.textContent = "● Govt Healthcare Pass";
     }
 
-    // Load Patient QR Codes
+    // Populate raw text representations for Text Details tabs
+    const profTextEl = document.getElementById("prof-raw-text");
+    if (profTextEl) {
+        profTextEl.textContent = 
+`📋 PULSESYNC MEDICAL PASS
+---------------------------------------
+Patient Name: ${user.name || 'Patient'}
+Age / Gender: ${user.age || '-'} Yrs / ${user.gender || '-'}
+Blood Group: ${user.blood_group || 'O+'}
+Emergency Allergies: ${allergiesList}
+Chronic Conditions: ${conditionsList}
+City / Location: ${user.city || user.address || 'Local'}
+Contact Phone: ${user.phone || '-'}
+Aadhaar UID: ${user.aadhaar_card_no || 'PM-JAY Linked'}
+PAN Card: ${user.pan_card_no || 'Verified'}
+Health Insurance: ${user.has_insurance ? 'Active Cashless' : 'Ayushman PM-JAY'}
+---------------------------------------
+Verified by PulseSync AI Clinical System`;
+    }
+
+    const insTextEl = document.getElementById("ins-raw-text");
+    if (insTextEl) {
+        insTextEl.textContent = 
+`🛡️ PULSESYNC CASHLESS PASS
+---------------------------------------
+Beneficiary: ${user.name || 'Patient'}
+Coverage: ${user.has_insurance ? 'Active Cashless Policy' : 'Ayushman Bharat PM-JAY'}
+Provider: ${user.insurance_provider || 'National Health / PM-JAY'}
+Policy No: ${user.insurance_policy_no || 'ACTIVE-PASS'}
+Claim Status: ${user.insurance_claimed ? 'Claimed / In-Progress' : 'Active / Ready to Claim'}
+ICU Eligibility: Approved for Emergency Admission
+---------------------------------------
+Verified by PulseSync AI Clinical System`;
+    }
+
+    // Load Patient QR Codes (Mobile-Ready & Scannable from another phone)
+    await loadPatientQrCodes(patId);
+}
+
+function openPatientCard(qrType = 'PROFILE_INTAKE') {
+    let patId = "";
+    if (currentUser) {
+        patId = currentUser.patient_id || currentUser.id;
+    }
+    if (!patId) {
+        try {
+            const saved = JSON.parse(localStorage.getItem("pulsesync_user") || "{}");
+            patId = saved.patient_id || saved.id || "";
+        } catch (_) {}
+    }
+    if (!patId) {
+        const img = document.getElementById("pat-profile-qr-img");
+        if (img && img.getAttribute("data-web-url")) {
+            const parts = img.getAttribute("data-web-url").split("/");
+            patId = parts[parts.length - 1];
+        }
+    }
+    if (!patId) {
+        patId = "pat_rahul_mishra";
+    }
+    const path = qrType === 'INSURANCE_CLAIM' ? `/qr/insurance/${patId}` : `/qr/patient/${patId}`;
+    window.open(path, '_blank');
+}
+
+function switchQrCardTab(cardKey, tabKey) {
+    const qrPane = document.getElementById(`${cardKey}-pane-qr`);
+    const textPane = document.getElementById(`${cardKey}-pane-text`);
+    const btnQr = document.getElementById(`${cardKey}-tab-btn-qr`);
+    const btnText = document.getElementById(`${cardKey}-tab-btn-text`);
+
+    if (qrPane && textPane) {
+        if (tabKey === 'text') {
+            qrPane.style.setProperty('display', 'none', 'important');
+            textPane.style.setProperty('display', 'block', 'important');
+            if (btnQr) btnQr.classList.remove('active');
+            if (btnText) btnText.classList.add('active');
+        } else {
+            qrPane.style.setProperty('display', 'flex', 'important');
+            textPane.style.setProperty('display', 'none', 'important');
+            if (btnQr) btnQr.classList.add('active');
+            if (btnText) btnText.classList.remove('active');
+        }
+    }
+}
+
+function copyQrTextDetails(cardKey) {
+    const textEl = document.getElementById(`${cardKey}-raw-text`);
+    if (!textEl) return;
+    const text = textEl.textContent.trim();
+    navigator.clipboard.writeText(text).then(() => {
+        showToast("Medical details copied to clipboard!", "success");
+    }).catch(() => {
+        showToast("Copied details", "info");
+    });
+}
+
+// Bind to window to guarantee availability across all execution scopes
+window.openPatientCard = openPatientCard;
+window.switchQrCardTab = switchQrCardTab;
+window.copyQrTextDetails = copyQrTextDetails;
+
+let patientQrFormatMode = {
+    PROFILE_INTAKE: "url",
+    INSURANCE_CLAIM: "url"
+};
+
+async function loadPatientQrCodes(patId) {
     try {
-        const resProf = await fetch(`${API_BASE}/api/qr/generate/${patId}/PROFILE_INTAKE`);
+        const modeProf = patientQrFormatMode.PROFILE_INTAKE || "url";
+        const resProf = await fetch(`${API_BASE}/api/qr/generate/${patId}/PROFILE_INTAKE?format_mode=${modeProf}`);
         const dataProf = await resProf.json();
         if (dataProf.success && dataProf.qr_image_base64) {
             const imgProf = document.getElementById("pat-profile-qr-img");
-            if (imgProf) imgProf.src = dataProf.qr_image_base64;
+            if (imgProf) {
+                imgProf.src = dataProf.qr_image_base64;
+                imgProf.setAttribute("data-web-url", dataProf.web_url || "");
+                imgProf.setAttribute("data-token", dataProf.token_payload || "");
+            }
         }
 
-        const resIns = await fetch(`${API_BASE}/api/qr/generate/${patId}/INSURANCE_CLAIM`);
+        const modeIns = patientQrFormatMode.INSURANCE_CLAIM || "url";
+        const resIns = await fetch(`${API_BASE}/api/qr/generate/${patId}/INSURANCE_CLAIM?format_mode=${modeIns}`);
         const dataIns = await resIns.json();
         if (dataIns.success && dataIns.qr_image_base64) {
             const imgIns = document.getElementById("pat-insurance-qr-img");
-            if (imgIns) imgIns.src = dataIns.qr_image_base64;
+            if (imgIns) {
+                imgIns.src = dataIns.qr_image_base64;
+                imgIns.setAttribute("data-web-url", dataIns.web_url || "");
+                imgIns.setAttribute("data-token", dataIns.token_payload || "");
+            }
         }
-    } catch (e) {}
+    } catch (e) {
+        console.warn("Notice loading QR passes:", e);
+    }
 }
 
 // Hydrate Doctor Dashboard
@@ -735,6 +873,10 @@ async function loadNearbyMedicalStores(lat, lng, query = "") {
         if (query) url += `&search_query=${encodeURIComponent(query)}`;
 
         const res = await fetch(url);
+        if (!res.ok) {
+            console.warn(`Nearby pharmacies responded with status ${res.status}`);
+            return;
+        }
         const data = await res.json();
         allLoadedPharmacies = data.pharmacies || [];
 
@@ -1543,14 +1685,46 @@ async function submitIcuPinVerification() {
 // 11. MODAL & TOAST UTILITIES
 // =============================================================================
 
-function expandQrModal(imgSrc, title) {
+let currentActiveQrModalUrl = "";
+
+function expandQrModal(imgSrc, title, webUrl, tokenPayload) {
     const modal = document.getElementById("qr-expand-modal");
     const img = document.getElementById("qr-expanded-img");
     const titleElem = document.getElementById("qr-modal-title");
+    const openBtn = document.getElementById("qr-modal-open-link");
+    const linkDisplay = document.getElementById("qr-modal-link-display");
 
     if (img) img.src = imgSrc;
     if (titleElem) titleElem.textContent = title;
+    
+    currentActiveQrModalUrl = webUrl || tokenPayload || "";
+
+    if (openBtn) {
+        if (webUrl && webUrl.startsWith("http")) {
+            openBtn.href = webUrl;
+            openBtn.style.display = "inline-flex";
+        } else {
+            openBtn.style.display = "none";
+        }
+    }
+
+    if (linkDisplay) {
+        linkDisplay.textContent = currentActiveQrModalUrl || "Direct Verified Health Pass";
+    }
+
     if (modal) modal.classList.add("active");
+}
+
+function copyQrLinkFromModal() {
+    if (!currentActiveQrModalUrl) {
+        showToast("No active link or token to copy.", "emergency");
+        return;
+    }
+    navigator.clipboard.writeText(currentActiveQrModalUrl).then(() => {
+        showToast("Patient medical pass link copied to clipboard!", "success");
+    }).catch(() => {
+        showToast("Copied pass token: " + currentActiveQrModalUrl.substring(0, 30) + "...", "info");
+    });
 }
 
 function closeQrModal() {
