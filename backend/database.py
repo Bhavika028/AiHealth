@@ -10,6 +10,7 @@ from dotenv import load_dotenv
 from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.orm import sessionmaker, Session
 from .models import Base
+from . import workflow_models  # Register additive clinical tables
 
 logger = logging.getLogger("pulsesync.db")
 logging.basicConfig(level=logging.INFO)
@@ -17,7 +18,7 @@ logging.basicConfig(level=logging.INFO)
 # Load environment variables
 load_dotenv()
 
-RAW_DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:[Bhavika@2803]@db.vgvgappbyxabcigyjfgd.supabase.co:5432/postgres")
+RAW_DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./pulsesync.db")
 
 # Normalise Postgres URL format if necessary (e.g. postgres:// -> postgresql://)
 if RAW_DATABASE_URL.startswith("postgres://"):
@@ -48,8 +49,7 @@ def create_active_engine(db_url: str):
         logger.info(f"[DB] Connected successfully to remote database ({db_url.split('@')[-1] if '@' in db_url else db_url})")
         return test_engine, db_url
     except Exception as exc:
-        logger.warning(f"[DB] Remote database connection failed ({exc}). Falling back to local SQLite (sqlite:///./pulsesync.db).")
-        return create_engine("sqlite:///./pulsesync.db", connect_args={"check_same_thread": False}), "sqlite:///./pulsesync.db"
+        raise RuntimeError("Configured database connection failed. Check DATABASE_URL; automatic database switching is disabled.") from None
 
 engine, ACTIVE_DATABASE_URL = create_active_engine(RAW_DATABASE_URL)
 DATABASE_URL = ACTIVE_DATABASE_URL
@@ -58,104 +58,28 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 def init_db() -> None:
     """Initialize database tables from SQLAlchemy metadata and ensure all columns exist."""
+    # Back up existing SQLite files before an additive schema migration.
+    from pathlib import Path
+    import shutil
+    if engine.dialect.name == "sqlite" and engine.url.database:
+        path = Path(engine.url.database)
+        if path.exists() and not path.with_suffix(".db.pre-healthflow.bak").exists():
+            shutil.copy2(path, path.with_suffix(".db.pre-healthflow.bak"))
     Base.metadata.create_all(bind=engine)
-    try:
-        with engine.connect() as conn:
-            # Safely add any new columns for existing tables
-            if engine.dialect.name == "postgresql":
-                conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash VARCHAR(255);"))
-                conn.execute(text("ALTER TABLE patients ADD COLUMN IF NOT EXISTS address TEXT;"))
-                conn.execute(text("ALTER TABLE patients ADD COLUMN IF NOT EXISTS city VARCHAR(128);"))
-                conn.execute(text("ALTER TABLE patients ADD COLUMN IF NOT EXISTS latitude DOUBLE PRECISION;"))
-                conn.execute(text("ALTER TABLE patients ADD COLUMN IF NOT EXISTS longitude DOUBLE PRECISION;"))
-                conn.execute(text("ALTER TABLE patients ADD COLUMN IF NOT EXISTS aadhaar_card_no VARCHAR(32);"))
-                conn.execute(text("ALTER TABLE patients ADD COLUMN IF NOT EXISTS pan_card_no VARCHAR(32);"))
-                conn.execute(text("ALTER TABLE patients ADD COLUMN IF NOT EXISTS has_insurance BOOLEAN DEFAULT TRUE;"))
-                conn.execute(text("ALTER TABLE patients ADD COLUMN IF NOT EXISTS insurance_claimed BOOLEAN DEFAULT FALSE;"))
-                
-                conn.execute(text("ALTER TABLE clinics ADD COLUMN IF NOT EXISTS latitude DOUBLE PRECISION;"))
-                conn.execute(text("ALTER TABLE clinics ADD COLUMN IF NOT EXISTS longitude DOUBLE PRECISION;"))
+    inspector = inspect(engine)
+    with engine.begin() as connection:
+        for table in Base.metadata.sorted_tables:
+            existing = {c["name"] for c in inspector.get_columns(table.name)}
+            for column in table.columns:
+                if column.name not in existing:
+                    # Existing rows remain nullable; ownership is never inferred from order.
+                    datatype = column.type.compile(dialect=engine.dialect)
+                    connection.execute(text(f'ALTER TABLE "{table.name}" ADD COLUMN "{column.name}" {datatype}'))
+        connection.execute(text("UPDATE wards_and_beds SET state = CASE WHEN is_occupied THEN 'OCCUPIED' ELSE 'AVAILABLE' END WHERE state IS NULL"))
+        connection.execute(text("UPDATE hospitals SET is_active = true WHERE is_active IS NULL"))
 
-                conn.execute(text("ALTER TABLE doctors ADD COLUMN IF NOT EXISTS education VARCHAR(255);"))
-                conn.execute(text("ALTER TABLE doctors ADD COLUMN IF NOT EXISTS clinic_name VARCHAR(255);"))
-                conn.execute(text("ALTER TABLE doctors ADD COLUMN IF NOT EXISTS clinic_address TEXT;"))
-                conn.execute(text("ALTER TABLE doctors ADD COLUMN IF NOT EXISTS patients_checked_count INTEGER DEFAULT 0;"))
-                
-                conn.execute(text("ALTER TABLE hospitals ADD COLUMN IF NOT EXISTS treatments JSON DEFAULT '[]'::json;"))
-                conn.execute(text("ALTER TABLE hospitals ADD COLUMN IF NOT EXISTS total_doctors INTEGER DEFAULT 12;"))
-                conn.execute(text("ALTER TABLE hospitals ADD COLUMN IF NOT EXISTS total_wards INTEGER DEFAULT 4;"))
-                conn.execute(text("ALTER TABLE hospitals ADD COLUMN IF NOT EXISTS latitude DOUBLE PRECISION;"))
-                conn.execute(text("ALTER TABLE hospitals ADD COLUMN IF NOT EXISTS longitude DOUBLE PRECISION;"))
-                
-                conn.execute(text("ALTER TABLE pharmacy_stores ADD COLUMN IF NOT EXISTS pharmacist_name VARCHAR(255);"))
-                conn.execute(text("ALTER TABLE pharmacy_stores ADD COLUMN IF NOT EXISTS city VARCHAR(128);"))
-                conn.execute(text("ALTER TABLE pharmacy_stores ADD COLUMN IF NOT EXISTS latitude DOUBLE PRECISION;"))
-                conn.execute(text("ALTER TABLE pharmacy_stores ADD COLUMN IF NOT EXISTS longitude DOUBLE PRECISION;"))
-                conn.execute(text("ALTER TABLE pharmacy_stores ADD COLUMN IF NOT EXISTS is_online BOOLEAN DEFAULT FALSE;"))
-                conn.execute(text("ALTER TABLE pharmacy_stores ADD COLUMN IF NOT EXISTS last_active_at TIMESTAMP;"))
-                conn.commit()
-            else:
-                # SQLite column migration helper - ensures all required columns exist in SQLite
-                sqlite_cols = [
-                    ("users", "password_hash", "VARCHAR(255)"),
-                    ("users", "language_preference", "VARCHAR(16) DEFAULT 'en'"),
-                    
-                    ("patients", "address", "TEXT"),
-                    ("patients", "city", "VARCHAR(128)"),
-                    ("patients", "latitude", "FLOAT"),
-                    ("patients", "longitude", "FLOAT"),
-                    ("patients", "aadhaar_card_no", "VARCHAR(32)"),
-                    ("patients", "pan_card_no", "VARCHAR(32)"),
-                    ("patients", "has_insurance", "BOOLEAN DEFAULT 1"),
-                    ("patients", "insurance_claimed", "BOOLEAN DEFAULT 0"),
-                    ("patients", "insurance_provider", "VARCHAR(255)"),
-                    ("patients", "insurance_policy_no", "VARCHAR(128)"),
-                    ("patients", "insurance_is_active", "BOOLEAN DEFAULT 1"),
-                    
-                    ("clinics", "latitude", "FLOAT"),
-                    ("clinics", "longitude", "FLOAT"),
-                    
-                    ("doctors", "education", "VARCHAR(255)"),
-                    ("doctors", "clinic_name", "VARCHAR(255)"),
-                    ("doctors", "clinic_address", "TEXT"),
-                    ("doctors", "patients_checked_count", "INTEGER DEFAULT 0"),
-                    ("doctors", "degree_proof_url", "TEXT"),
-                    ("doctors", "available_hours", "TEXT DEFAULT '{}'"),
-                    ("doctors", "is_verified", "BOOLEAN DEFAULT 1"),
-                    
-                    ("hospitals", "treatments", "TEXT DEFAULT '[]'"),
-                    ("hospitals", "total_doctors", "INTEGER DEFAULT 12"),
-                    ("hospitals", "total_wards", "INTEGER DEFAULT 4"),
-                    ("hospitals", "latitude", "FLOAT"),
-                    ("hospitals", "longitude", "FLOAT"),
-                    ("hospitals", "emergency_phone", "VARCHAR(32)"),
-                    
-                    ("pharmacy_stores", "pharmacist_name", "VARCHAR(255)"),
-                    ("pharmacy_stores", "city", "VARCHAR(128)"),
-                    ("pharmacy_stores", "latitude", "FLOAT"),
-                    ("pharmacy_stores", "longitude", "FLOAT"),
-                    ("pharmacy_stores", "is_online", "BOOLEAN DEFAULT 0"),
-                    ("pharmacy_stores", "last_active_at", "DATETIME"),
-                    ("pharmacy_stores", "phone", "VARCHAR(32)"),
-                    
-                    ("doctor_notes", "is_emergency_transfer", "BOOLEAN DEFAULT 0"),
-                    ("doctor_notes", "referral_type", "VARCHAR(64) DEFAULT 'NONE'"),
-                    ("doctor_notes", "referral_hospital_id", "VARCHAR(64)"),
-                    ("doctor_notes", "referral_doctor_name", "VARCHAR(255)"),
-                    ("doctor_notes", "referral_destination_name", "VARCHAR(255)"),
-                    ("doctor_notes", "referral_reason", "TEXT"),
-                    ("doctor_notes", "transfer_status", "VARCHAR(64) DEFAULT 'NONE'"),
-                    ("doctor_notes", "confirmation_pin", "VARCHAR(16)"),
-                    ("doctor_notes", "is_finalized", "BOOLEAN DEFAULT 0"),
-                ]
-                for tbl, col, col_type in sqlite_cols:
-                    try:
-                        conn.execute(text(f"ALTER TABLE {tbl} ADD COLUMN {col} {col_type};"))
-                        conn.commit()
-                    except Exception:
-                        pass
-    except Exception as err:
-        logger.warning(f"[DB] Migration check notice: {err}")
+    with engine.begin() as connection:
+        connection.execute(text('CREATE UNIQUE INDEX IF NOT EXISTS uq_hospital_owner ON hospitals(user_id) WHERE user_id IS NOT NULL'))
 
 
 def get_db() -> Generator[Session, None, None]:

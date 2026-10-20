@@ -12,6 +12,7 @@ import json
 import datetime
 
 from ..database import get_db
+from ..security import current_user, patient_access, encounter_access
 from ..models import Consultation, Patient, DoctorNote, Doctor
 
 router = APIRouter(prefix="/api/ai", tags=["AI Note Summarizer"])
@@ -146,10 +147,10 @@ def generate_clinical_summary(patient: Patient, consultation: Optional[Consultat
     allergies_str = ", ".join(patient.allergies) if patient.allergies else "No known drug allergies reported"
     conditions_str = ", ".join(patient.existing_conditions) if patient.existing_conditions else "None declared"
     
-    complaint = consultation.chief_complaint if consultation else "Blood Pressure"
-    duration = f"{consultation.symptom_duration_value} {consultation.symptom_duration_unit}" if consultation else "4 Hours"
-    severity = consultation.symptom_severity if consultation else "Severe"
-    warnings = consultation.warning_symptoms if consultation else ["chest_pain", "severe_weakness"]
+    complaint = consultation.chief_complaint if consultation else "Not recorded"
+    duration = f"{consultation.symptom_duration_value} {consultation.symptom_duration_unit}" if consultation else "Not recorded"
+    severity = consultation.symptom_severity if consultation else "Not recorded"
+    warnings = consultation.warning_symptoms if consultation else []
 
     is_urgent = (consultation and consultation.is_urgent) or ("chest_pain" in str(warnings)) or (vitals.get("bp") and "210" in str(vitals.get("bp")))
 
@@ -169,7 +170,7 @@ def generate_clinical_summary(patient: Patient, consultation: Optional[Consultat
         clean_key = k.replace("_", " ").title()
         observations.append(f"• **{clean_key}**: {v}")
 
-    branch_text = "\n".join(observations) if observations else "• Targeted symptom branch responses verified within standard threshold."
+    branch_text = "\n".join(observations) if observations else "No branch responses recorded."
 
     # 4. Synthesize Markdown Structured Note
     structured_markdown = f"""### PulseSync AI Preliminary Clinical Summary
@@ -187,21 +188,21 @@ def generate_clinical_summary(patient: Patient, consultation: Optional[Consultat
 {branch_text}
 
 #### 3. Recorded Clinical Vitals
-* **Blood Pressure:** {vitals.get('bp', '210/130 mmHg')}
-* **Pulse / Heart Rate:** {vitals.get('pulse', '108 bpm')}
-* **Temperature:** {vitals.get('temp', '98.6 °F')}
-* **Oxygen Saturation (SpO2):** {vitals.get('spo2', '97%')}
-* **Blood Glucose:** {vitals.get('glucose', '142 mg/dL (Random)')}
+* **Blood Pressure:** {vitals.get('bp', 'Not recorded')}
+* **Pulse / Heart Rate:** {vitals.get('pulse', 'Not recorded')}
+* **Temperature:** {vitals.get('temp', 'Not recorded')}
+* **Oxygen Saturation (SpO2):** {vitals.get('spo2', 'Not recorded')}
+* **Blood Glucose:** {vitals.get('glucose', 'Not recorded')}
 
 #### 4. AI Clinical Risk Assessment
 {chr(10).join(['* ⚠️ ' + flag for flag in risk_flags])}
 
 #### 5. Recommended Next Steps for Doctor Review
-* Immediate clinical assessment of cardiovascular vitals and target-organ protection.
+* Review the recorded symptoms, measurements, allergies and history.
 * Consider Emergency ICU Transfer protocol if systolic blood pressure >= 180 mmHg or symptomatic chest constriction persists.
 """
 
-    preliminary_diagnosis = "Hypertensive Crisis (Stage 3)" if ("210" in str(vitals) or "Blood Pressure" in complaint) else f"Acute {complaint}"
+    preliminary_diagnosis = "Unconfirmed: clinician assessment required"
 
     return {
         "structured_note_markdown": structured_markdown,
@@ -213,7 +214,7 @@ def generate_clinical_summary(patient: Patient, consultation: Optional[Consultat
     }
 
 @router.post("/generate-summary")
-def generate_summary(req: SummarizationRequest, db: Session = Depends(get_db)):
+def generate_summary(req: SummarizationRequest, db: Session = Depends(get_db), user=Depends(current_user)):
     """Generate structured doctor note from consultation ID or intake data."""
     consultation = None
     patient = None
@@ -227,16 +228,14 @@ def generate_summary(req: SummarizationRequest, db: Session = Depends(get_db)):
         patient = db.query(Patient).filter(Patient.id == req.patient_id).first()
 
     if not patient:
-        patient = db.query(Patient).first()
+        raise HTTPException(404,'Select a valid patient or consultation')
+    patient_access(db,user,patient.id)
 
     branch_data = req.branch_responses or (consultation.branch_responses if consultation else {})
-    vitals_data = req.vitals or {
-        "bp": "210/130 mmHg",
-        "pulse": 108,
-        "temp": "98.6 °F",
-        "spo2": 97,
-        "glucose": "142 mg/dL"
-    }
+    from ..workflow_models import Vital
+    stored = db.query(Vital).filter_by(consultation_id=consultation.id).all() if consultation else []
+    names={'BP':'bp','temperature':'temp','pulse':'pulse','SpO2':'spo2','glucose':'glucose'}
+    vitals_data = req.vitals or {names[v.name]:f'{v.value} {v.unit}' for v in stored if v.name in names}
 
     result = generate_clinical_summary(patient, consultation, branch_data, vitals_data)
     return {
@@ -258,7 +257,7 @@ def nlp_extract_symptoms(payload: Dict[str, str]):
     }
 
 @router.post("/chatbot")
-def medical_robot_chat(req: ChatbotRequest, db: Session = Depends(get_db)):
+def medical_robot_chat(req: ChatbotRequest, db: Session = Depends(get_db), user=Depends(current_user)):
     """Interactive AI Medical Robot responding in Marathi, Hindi, English, or Hinglish."""
     msg = req.message.lower()
     lang = req.language.lower() if req.language else "en"

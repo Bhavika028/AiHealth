@@ -5,3 +5,11 @@ __pycache__/
 *$py.class
 venv/
 .venv/
+.env
+.jwt-secret
+.venv/
+__pycache__/
+.pytest_cache/
+*.pyc
+*.bak
+uploads/

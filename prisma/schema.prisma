@@ -1,3 +1,5 @@
+// Legacy reference only. Runtime schema and migrations are SQLAlchemy models.
+// Do not run Prisma migrations against the current application database.
 // ==============================================================================
 // PulseSync AI - Prisma Schema (PostgreSQL ORM)
 // ==============================================================================
@@ -55,6 +57,9 @@ model User {
   email               String         @unique
   name                String
   phone               String?
+  pinHash             String?        @map("pin_hash")
+  pinFailures         Int?           @default(0) @map("pin_failures")
+  pinLockedUntil      DateTime?      @map("pin_locked_until")
   role                UserRole       @default(PATIENT)
   languagePreference  String         @default("en") @map("language_preference")
   isActive            Boolean        @default(true) @map("is_active")

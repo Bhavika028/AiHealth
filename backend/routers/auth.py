@@ -6,7 +6,7 @@ import hmac
 import hashlib
 from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException, status, Header
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, field_validator
 from typing import Optional, List, Dict, Any
 from sqlalchemy.orm import Session
 
@@ -24,7 +24,18 @@ from ..models import (
 
 router = APIRouter(prefix="/api/auth", tags=["Authentication & Registration"])
 
-JWT_SECRET = os.getenv("JWT_SECRET", "pulsesync_jwt_super_secret_key_2026_production")
+from pathlib import Path
+import secrets
+_secret_file = Path(__file__).resolve().parents[2] / ".jwt-secret"
+JWT_SECRET = os.getenv("JWT_SECRET")
+if not JWT_SECRET:
+    try:
+        fd = os.open(str(_secret_file), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(fd, "w") as stream:
+            stream.write(secrets.token_hex(32))
+    except FileExistsError:
+        pass
+    JWT_SECRET = _secret_file.read_text().strip()
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRATION_HOURS = 72
 
@@ -42,19 +53,22 @@ def _b64_decode(data: str) -> bytes:
     return base64.urlsafe_b64decode(data.encode('utf-8'))
 
 def hash_password(password: str) -> str:
-    """Hash password using SHA-256 with a secure static + dynamic salt."""
-    if not password:
-        password = "default_secure_pwd"
-    salt = "pulsesync_secure_salt_v2"
-    hashed = hashlib.sha256(f"{salt}{password}".encode("utf-8")).hexdigest()
-    return f"sha256${hashed}"
+    salt = secrets.token_hex(16)
+    digest = hashlib.pbkdf2_hmac("sha256", password.encode(), salt.encode(), 260000).hex()
+    return f"pbkdf2${salt}${digest}"
 
 def verify_password(plain_password: str, hashed_password: Optional[str]) -> bool:
-    """Verify plain password against stored hash."""
     if not hashed_password:
         return False
-    expected_hash = hash_password(plain_password)
-    return expected_hash == hashed_password
+    if hashed_password.startswith("sha256$"):
+        expected = "sha256$" + hashlib.sha256(f"pulsesync_secure_salt_v2{plain_password}".encode()).hexdigest()
+        return hmac.compare_digest(expected, hashed_password)
+    try:
+        _, salt, digest = hashed_password.split("$")
+        actual = hashlib.pbkdf2_hmac("sha256", plain_password.encode(), salt.encode(), 260000).hex()
+        return hmac.compare_digest(actual, digest)
+    except ValueError:
+        return False
 
 def create_access_token(user_id: str, email: str, role: str) -> str:
     """Generate signed HS256 JWT Token with expiration."""
@@ -62,6 +76,7 @@ def create_access_token(user_id: str, email: str, role: str) -> str:
     iat_ts = int(datetime.now(timezone.utc).timestamp())
     payload = {
         "sub": user_id,
+        "jti": uuid.uuid4().hex,
         "email": email,
         "role": role,
         "exp": exp_ts,
@@ -116,14 +131,16 @@ def decode_access_token(token: str) -> Dict[str, Any]:
 
 class LoginRequest(BaseModel):
     email: str
-    password: Optional[str] = "PulseSync@2026"
+    password: str
     role: Optional[str] = None
 
 
 class UnifiedRegisterRequest(BaseModel):
+    pin: str
+    confirm_pin: str
     role: str  # PATIENT, DOCTOR, HOSPITAL_ADMIN, PHARMACY
     email: str
-    password: Optional[str] = "PulseSync@2026"
+    password: str
     name: str
     phone: Optional[str] = ""
     preferred_language: Optional[str] = "en"
@@ -135,12 +152,12 @@ class UnifiedRegisterRequest(BaseModel):
     # --- PATIENT SPECIFIC FIELDS ---
     age: Optional[int] = 30
     gender: Optional[str] = "Male"
-    blood_group: Optional[str] = "O+"
+    blood_group: Optional[str] = None
     address: Optional[str] = ""
     city: Optional[str] = ""
     aadhaar_card_no: Optional[str] = ""
     pan_card_no: Optional[str] = ""
-    has_insurance: Optional[bool] = True
+    has_insurance: Optional[bool] = False
     insurance_provider: Optional[str] = ""
     insurance_policy_no: Optional[str] = ""
     insurance_claimed: Optional[bool] = False
@@ -148,6 +165,16 @@ class UnifiedRegisterRequest(BaseModel):
     allergies: Optional[List[str]] = []
     current_medications: Optional[List[Dict[str, Any]]] = []
     
+    @field_validator('current_medications')
+    @classmethod
+    def validate_reported_medications(cls,items):
+        for m in items or []:
+            if not str(m.get('name','')).strip(): raise ValueError('Current medication requires a name')
+            times=m.get('times_per_day')
+            if times is not None and (type(times) is not int or not 1<=times<=24): raise ValueError('Medication times per day must be a whole number from 1 to 24')
+            if m.get('food') not in (None,'Before food','After food','Not specified'): raise ValueError('Invalid medication food instruction')
+        return items
+
     # --- DOCTOR SPECIFIC FIELDS ---
     specialization: Optional[str] = ""
     education: Optional[str] = ""
@@ -161,10 +188,10 @@ class UnifiedRegisterRequest(BaseModel):
     registration_no: Optional[str] = ""
     emergency_phone: Optional[str] = ""
     treatments: Optional[List[str]] = []
-    total_doctors: Optional[int] = 10
-    total_wards: Optional[int] = 4
-    total_icu_beds: Optional[int] = 10
-    total_general_beds: Optional[int] = 50
+    total_doctors: Optional[int] = 0
+    total_wards: Optional[int] = 0
+    total_icu_beds: Optional[int] = 0
+    total_general_beds: Optional[int] = 0
     
     # --- PHARMACY SPECIFIC FIELDS ---
     store_name: Optional[str] = ""
@@ -221,11 +248,13 @@ def hydrate_user_payload(user: User, db: Session) -> Dict[str, Any]:
                 "clinic_name": doc.clinic_name or (doc.clinic.name if doc.clinic else ""),
                 "clinic_address": doc.clinic_address or (doc.clinic.address if doc.clinic else ""),
                 "patients_checked_count": doc.patients_checked_count or 0,
+                "latitude": doc.clinic.latitude if doc.clinic else None,
+                "longitude": doc.clinic.longitude if doc.clinic else None,
                 "clinic_id": doc.clinic_id,
                 "hospital_id": doc.hospital_id
             }
     elif user.role in ["HOSPITAL_ADMIN", "HOSPITAL"]:
-        hosp = db.query(Hospital).first()
+        hosp = db.query(Hospital).filter(Hospital.user_id == user.id).first()
         if hosp:
             entity_data = {
                 "hospital_id": hosp.id,
@@ -237,10 +266,10 @@ def hydrate_user_payload(user: User, db: Session) -> Dict[str, Any]:
                 "longitude": hosp.longitude,
                 "emergency_phone": hosp.emergency_phone or "",
                 "treatments": hosp.treatments or [],
-                "total_doctors": hosp.total_doctors or 10,
-                "total_wards": hosp.total_wards or 4,
-                "total_icu_beds": hosp.total_icu_beds or 10,
-                "total_general_beds": hosp.total_general_beds or 50
+                "total_doctors": hosp.total_doctors or 0,
+                "total_wards": hosp.total_wards or 0,
+                "total_icu_beds": hosp.total_icu_beds or 0,
+                "total_general_beds": hosp.total_general_beds or 0
             }
     elif user.role == "PHARMACY":
         pharm = db.query(PharmacyStore).filter(PharmacyStore.user_id == user.id).first()
@@ -286,7 +315,7 @@ def register(payload: UnifiedRegisterRequest, db: Session = Depends(get_db)):
             detail="Please provide a valid email address."
         )
 
-    raw_password = payload.password.strip() if (payload.password and payload.password.strip()) else "PulseSync@2026"
+    raw_password = payload.password or ""
     if len(raw_password) < 4:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -303,6 +332,12 @@ def register(payload: UnifiedRegisterRequest, db: Session = Depends(get_db)):
     if normalized_role == "HOSPITAL":
         normalized_role = "HOSPITAL_ADMIN"
 
+    if normalized_role not in {"PATIENT", "DOCTOR", "HOSPITAL_ADMIN", "PHARMACY"}:
+        raise HTTPException(400, "Unsupported role")
+    if (payload.latitude is None) != (payload.longitude is None):
+        raise HTTPException(400, "Enter both latitude and longitude")
+    if payload.latitude is not None and not (-90 <= payload.latitude <= 90 and -180 <= payload.longitude <= 180):
+        raise HTTPException(400, "Coordinates out of range")
     # STRICT CHECK: Reject if user already registered
     existing_user = db.query(User).filter(User.email == clean_email).first()
     if existing_user:
@@ -310,6 +345,9 @@ def register(payload: UnifiedRegisterRequest, db: Session = Depends(get_db)):
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"An account with email '{clean_email}' already exists. Please sign in instead."
         )
+
+    from ..pin_security import validate_new_pin, hash_pin
+    validate_new_pin(payload.pin, payload.confirm_pin)
 
     # 1. Create Base User with Password Hash
     user_id = f"usr_{uuid.uuid4().hex[:8]}"
@@ -319,6 +357,7 @@ def register(payload: UnifiedRegisterRequest, db: Session = Depends(get_db)):
         id=user_id,
         email=clean_email,
         password_hash=pwd_hash,
+        pin_hash=hash_pin(payload.pin),
         name=payload.name.strip(),
         phone=payload.phone.strip() if payload.phone else "",
         role=normalized_role,
@@ -337,7 +376,7 @@ def register(payload: UnifiedRegisterRequest, db: Session = Depends(get_db)):
             full_name=payload.name.strip(),
             age=payload.age or 30,
             gender=payload.gender or "Male",
-            blood_group=payload.blood_group or "O+",
+            blood_group=payload.blood_group or None,
             address=payload.address or "",
             city=payload.city or "",
             latitude=payload.latitude,
@@ -360,7 +399,7 @@ def register(payload: UnifiedRegisterRequest, db: Session = Depends(get_db)):
             id=f"qr_prof_{uuid.uuid4().hex[:6]}",
             patient_id=pat_id,
             qr_type="PROFILE_INTAKE",
-            token_payload=f"PULSESYNC:PAT:{pat_id}:NAME:{payload.name}:BLOOD:{payload.blood_group}:ALLERGIES:{','.join(payload.allergies or ['None'])}",
+            token_payload=f"PULSESYNC:IDENTITY:{pat_id}",
             expires_at=datetime.now(timezone.utc) + timedelta(days=90),
             is_active=True
         )
@@ -368,7 +407,7 @@ def register(payload: UnifiedRegisterRequest, db: Session = Depends(get_db)):
             id=f"qr_ins_{uuid.uuid4().hex[:6]}",
             patient_id=pat_id,
             qr_type="INSURANCE_CLAIM",
-            token_payload=f"PULSESYNC:INS:{pat_id}:POLICY:{payload.insurance_policy_no or 'DIRECT-CLAIM'}:PROVIDER:{payload.insurance_provider or 'Self'}:CLAIMED:{payload.insurance_claimed}",
+            token_payload=f"PULSESYNC:INSURANCE:IDENTITY:{pat_id}",
             expires_at=datetime.now(timezone.utc) + timedelta(days=90),
             is_active=True
         )
@@ -397,7 +436,7 @@ def register(payload: UnifiedRegisterRequest, db: Session = Depends(get_db)):
             full_name=payload.name.strip(),
             specialization=payload.specialization or "General Physician",
             education=payload.education or "MBBS",
-            license_no=payload.license_no or f"MCI-REG-{uuid.uuid4().hex[:5].upper()}",
+            license_no=payload.license_no or None,
             clinic_name=payload.clinic_name or clinic.name,
             clinic_address=payload.clinic_address or clinic.address,
             patients_checked_count=payload.patients_checked_count or 0,
@@ -409,30 +448,30 @@ def register(payload: UnifiedRegisterRequest, db: Session = Depends(get_db)):
         hosp_id = f"hosp_{uuid.uuid4().hex[:6]}"
         hospital = Hospital(
             id=hosp_id,
+            user_id=user_id,
+            is_active=True,
             name=payload.hospital_name or payload.name.strip(),
-            registration_no=payload.registration_no or f"HOSP-REG-{uuid.uuid4().hex[:5].upper()}",
+            registration_no=payload.registration_no or None,
             address=payload.address or "Hospital Address",
             city=payload.city or "City",
             latitude=payload.latitude,
             longitude=payload.longitude,
             emergency_phone=payload.emergency_phone or payload.phone or "",
-            treatments=payload.treatments or ["General Medicine", "Emergency & ICU", "Surgery"],
-            total_doctors=payload.total_doctors or 10,
-            total_wards=payload.total_wards or 4,
-            total_icu_beds=payload.total_icu_beds or 10,
-            total_general_beds=payload.total_general_beds or 50
+            treatments=payload.treatments or [],
+            total_doctors=payload.total_doctors if payload.total_doctors is not None else 0,
+            total_wards=payload.total_wards if payload.total_wards is not None else 0,
+            total_icu_beds=payload.total_icu_beds if payload.total_icu_beds is not None else 0,
+            total_general_beds=payload.total_general_beds if payload.total_general_beds is not None else 0
         )
         db.add(hospital)
         db.flush()
 
-        initial_beds = [
-            WardAndBed(hospital_id=hosp_id, ward_name="Cardiac ICU Ward A", ward_type="ICU", bed_number="ICU-01", is_occupied=False),
-            WardAndBed(hospital_id=hosp_id, ward_name="Cardiac ICU Ward A", ward_type="ICU", bed_number="ICU-02", is_occupied=False),
-            WardAndBed(hospital_id=hosp_id, ward_name="Emergency Trauma Ward", ward_type="EMERGENCY", bed_number="EMG-01", is_occupied=False),
-            WardAndBed(hospital_id=hosp_id, ward_name="General Ward", ward_type="GENERAL", bed_number="GEN-01", is_occupied=False),
-            WardAndBed(hospital_id=hosp_id, ward_name="General Ward", ward_type="GENERAL", bed_number="GEN-02", is_occupied=False)
-        ]
-        db.add_all(initial_beds)
+        for kind, count in [("ICU", hospital.total_icu_beds), ("GENERAL", hospital.total_general_beds)]:
+            if count < 0 or count > 500:
+                raise HTTPException(400, "Bed count must be between 0 and 500")
+            for number in range(1, count + 1):
+                db.add(WardAndBed(hospital_id=hosp_id, ward_name=f"{kind} Ward", ward_type=kind,
+                                  bed_number=f"{kind}-{number:03}", is_occupied=False, state="AVAILABLE"))
 
     elif normalized_role == "PHARMACY":
         pharma_id = f"pharma_{uuid.uuid4().hex[:6]}"
@@ -441,7 +480,7 @@ def register(payload: UnifiedRegisterRequest, db: Session = Depends(get_db)):
             user_id=user_id,
             store_name=payload.store_name or payload.name.strip(),
             pharmacist_name=payload.pharmacist_name or payload.name.strip(),
-            license_no=payload.drug_license_no or payload.license_no or f"DL-PH-{uuid.uuid4().hex[:5].upper()}",
+            license_no=payload.drug_license_no or payload.license_no or None,
             address=payload.address or "Medical Complex",
             city=payload.city or "",
             latitude=payload.latitude,
@@ -453,16 +492,6 @@ def register(payload: UnifiedRegisterRequest, db: Session = Depends(get_db)):
         db.add(pharma)
         db.flush()
 
-        # Seed essential inventory items for the newly registered pharmacy
-        med_items = [
-            Inventory(pharmacy_id=pharma_id, medicine_name="Paracetamol 650mg", generic_name="Paracetamol", dosage_form="Tablet", stock_quantity=200, low_stock_threshold=30, price=30.0),
-            Inventory(pharmacy_id=pharma_id, medicine_name="Amlodipine Besylate 10mg", generic_name="Amlodipine", dosage_form="Tablet", stock_quantity=120, low_stock_threshold=20, price=45.0),
-            Inventory(pharmacy_id=pharma_id, medicine_name="Telmisartan 40mg", generic_name="Telmisartan", dosage_form="Tablet", stock_quantity=100, low_stock_threshold=20, price=88.0),
-            Inventory(pharmacy_id=pharma_id, medicine_name="Azithromycin 500mg", generic_name="Azithromycin", dosage_form="Tablet", stock_quantity=40, low_stock_threshold=15, price=115.0),
-            Inventory(pharmacy_id=pharma_id, medicine_name="Salbutamol Inhaler 100mcg", generic_name="Salbutamol", dosage_form="Inhaler", stock_quantity=15, low_stock_threshold=10, price=160.0),
-            Inventory(pharmacy_id=pharma_id, medicine_name="Labetalol Hydrochloride IV 20mg", generic_name="Labetalol HCl", dosage_form="Injection", stock_quantity=25, low_stock_threshold=10, price=245.0)
-        ]
-        db.add_all(med_items)
 
     db.commit()
     db.refresh(new_user)
@@ -502,7 +531,7 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)):
         )
 
     # STRICT PASSWORD VALIDATION
-    raw_login_pwd = payload.password or "PulseSync@2026"
+    raw_login_pwd = payload.password or ""
     if user.password_hash:
         if not verify_password(raw_login_pwd, user.password_hash):
             raise HTTPException(
@@ -510,9 +539,9 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)):
                 detail="Incorrect password. Please try again."
             )
     else:
-        # If legacy user has no hash yet, update it with this password
-        user.password_hash = hash_password(raw_login_pwd)
-        db.commit()
+        raise HTTPException(401, "Legacy account has no password. Set it using the local recovery command.")
+    if not user.is_active:
+        raise HTTPException(401, "Account disabled")
 
     # Verify role if provided
     if payload.role:
@@ -552,6 +581,9 @@ def logout(authorization: Optional[str] = Header(None), db: Session = Depends(ge
         token = authorization.split(" ")[1]
         try:
             payload = decode_access_token(token)
+            from ..workflow_models import RevokedToken
+            db.add(RevokedToken(id=payload.get("jti", hashlib.sha256(token.encode()).hexdigest())))
+            db.commit()
             user_id = payload.get("sub")
             if user_id:
                 user = db.query(User).filter(User.id == user_id).first()
@@ -573,20 +605,8 @@ def get_current_user_profile(
     db: Session = Depends(get_db)
 ):
     """Retrieve full dynamic profile from verified JWT token."""
-    user = None
-    if authorization and authorization.startswith("Bearer "):
-        token = authorization.split(" ")[1]
-        payload = decode_access_token(token)
-        user_id = payload.get("sub")
-
-    if user_id:
-        user = db.query(User).filter(User.id == user_id).first()
-
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Session invalid or user not found. Please log in."
-        )
+    from ..security import current_user
+    user = current_user(authorization, db)
 
     return {
         "success": True,

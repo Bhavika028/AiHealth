@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 import datetime
 
 from ..database import get_db
+from ..security import current_user, patient_access, require_role, entity
 from ..models import Patient, Consultation, DoctorNote, Doctor, Clinic
 
 router = APIRouter(prefix="/api/intake", tags=["Adaptive Patient Intake"])
@@ -148,11 +149,12 @@ COMPLAINT_BRANCHES: Dict[str, Dict[str, Any]] = {
 # ------------------------------------------------------------------------------
 
 @router.get("/profile-autofill/{patient_id}")
-def get_patient_profile_for_intake(patient_id: str, db: Session = Depends(get_db)):
+def get_patient_profile_for_intake(patient_id: str, db: Session = Depends(get_db), user=Depends(current_user)):
     """
     Step 1 in Clinic Workflow:
     Patient scans QR code -> System auto-fetches age, medical history, allergies, existing medications.
     """
+    patient_access(db,user,patient_id)
     patient = db.query(Patient).filter(Patient.id == patient_id).first()
     if not patient:
         raise HTTPException(status_code=404, detail="Patient profile not found.")
@@ -202,11 +204,15 @@ def get_complaint_branch_questions(complaint_key: str):
 
 
 @router.post("/submit")
-def submit_patient_intake(payload: PatientIntakePayload, db: Session = Depends(get_db)):
+def submit_patient_intake(payload: PatientIntakePayload, db: Session = Depends(get_db), user=Depends(current_user)):
     """
     Step 6-7: Submits the dynamic intake questionnaire, checks warning signs,
     triggers URGENT flag if necessary, and persists record for doctor review.
     """
+    require_role(user,'PATIENT')
+    patient_access(db,user,payload.patient_id)
+    if not payload.doctor_id or not db.get(Doctor,payload.doctor_id): raise HTTPException(400,'Select a registered doctor')
+    payload.clinic_id=db.get(Doctor,payload.doctor_id).clinic_id
     patient = db.query(Patient).filter(Patient.id == payload.patient_id).first()
     if not patient:
         raise HTTPException(status_code=404, detail="Patient not found.")
@@ -232,7 +238,8 @@ def submit_patient_intake(payload: PatientIntakePayload, db: Session = Depends(g
         except Exception:
             pass
 
-    consult_id = f"consult_{int(datetime.datetime.now().timestamp())}_{payload.patient_id[:6]}"
+    import uuid
+    consult_id = str(uuid.uuid4())
 
     new_consultation = Consultation(
         id=consult_id,
@@ -256,10 +263,14 @@ def submit_patient_intake(payload: PatientIntakePayload, db: Session = Depends(g
         status="REFERRED_ICU" if (is_urgent and ("Hypertensive" in str(urgent_reasons) or "chest" in str(warning_list))) else ("IN_DOCTOR_QUEUE" if is_urgent else "TRIAGED"),
         is_urgent=is_urgent,
         urgency_reason=", ".join(urgent_reasons) if urgent_reasons else None,
-        seasonal_context="monsoon"
+        seasonal_context=None,
+        created_by=user.id
     )
 
     db.add(new_consultation)
+    db.flush()
+    from .workflow import audit
+    audit(db,user,payload.patient_id,'SUBMIT_INTAKE',new_consultation.id)
     db.commit()
     db.refresh(new_consultation)
 
