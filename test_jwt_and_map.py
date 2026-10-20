@@ -38,7 +38,9 @@ def test_full_flow():
         "longitude": 72.8777,
         "has_insurance": True,
         "insurance_provider": "Star Health Care",
-        "insurance_policy_no": "SH-MUM-2026-881"
+        "insurance_policy_no": "SH-MUM-2026-881",
+        "pin": "123456",
+        "confirm_pin": "123456"
     }
     res = client.post("/api/auth/register", json=reg_payload)
     assert res.status_code == 200, f"Registration failed: {res.text}"
@@ -87,7 +89,9 @@ def test_full_flow():
         "city": "Mumbai",
         "address": "Shop 12, Link Road, Andheri West, Mumbai",
         "latitude": 19.1363,
-        "longitude": 72.8277
+        "longitude": 72.8277,
+        "pin": "123456",
+        "confirm_pin": "123456"
     }
     res_pharm = client.post("/api/auth/register", json=pharm_payload)
     assert res_pharm.status_code == 200, f"Pharmacy reg failed: {res_pharm.text}"

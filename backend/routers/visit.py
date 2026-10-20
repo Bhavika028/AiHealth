@@ -7,8 +7,9 @@ from sqlalchemy import update
 from sqlalchemy.orm import Session
 from ..database import get_db
 from ..models import Patient, Doctor, Hospital, Clinic, Prescription, DoctorNote, Consultation, PharmacyStore
-from ..workflow_models import ConsultationPlan, OutpatientAppointment, Medication, Referral, Diagnosis, Vital, Document, FollowUp, MedicalEvent, Allergy
+from ..workflow_models import ConsultationPlan, OutpatientAppointment, Medication, Referral, Diagnosis, Vital, Document, FollowUp, MedicalEvent, Allergy, AccessRequest, AccessGrant, ConsultationAuthorization, AuditLog, Notification
 from ..security import current_user, encounter_access, entity, require_role
+from ..pin_security import verify_pin, check_lock
 from .workflow import serial, migrate_patient_records, version, event, notify
 router=APIRouter(prefix='/api/workflow',tags=['Consultation decisions'])
 
@@ -237,3 +238,81 @@ def external_referrals(db:Session=Depends(get_db),user=Depends(current_user)):
             for index,r in enumerate(plan.content.get('referrals',[])):
                 if not r.get('hospital_id'):result.append(dict(r,consultation_id=c.id,index=index,patient_name=c.patient.full_name))
     return result
+
+class PatientScanDoctorConsultation(BaseModel):
+    doctor_id: str
+    pin: str
+    chief_complaint: str
+    severity: Optional[str] = "Moderate"
+    patient_notes: Optional[str] = ""
+
+@router.post('/consultations/patient-scan-doctor')
+def patient_scan_doctor(body: PatientScanDoctorConsultation, db: Session = Depends(get_db), user = Depends(current_user)):
+    require_role(user, 'PATIENT')
+    patient = entity(db, user, Patient)
+    check_lock(db, user)
+    verify_pin(db, user, body.pin)
+
+    doctor = db.get(Doctor, body.doctor_id)
+    if not doctor or not doctor.user_id:
+        raise HTTPException(404, 'Doctor not found')
+
+    import secrets, hashlib
+    now = datetime.utcnow()
+    expires_at = now + timedelta(minutes=60)
+
+    r = AccessRequest(
+        patient_id=patient.id,
+        provider_user_id=doctor.user_id,
+        scope='CLINICAL',
+        expires_at=expires_at,
+        status='APPROVED'
+    )
+    db.add(r)
+    db.flush()
+
+    token_hash = hashlib.sha256(secrets.token_bytes(32)).hexdigest()
+    g = AccessGrant(
+        patient_id=patient.id,
+        user_id=doctor.user_id,
+        scope='CLINICAL',
+        token_hash=token_hash,
+        expires_at=expires_at
+    )
+    db.add(g)
+    db.flush()
+    r.grant_id = g.id
+
+    c = Consultation(
+        patient_id=patient.id,
+        doctor_id=doctor.id,
+        clinic_id=doctor.clinic_id,
+        hospital_id=doctor.hospital_id,
+        created_by=user.id,
+        chief_complaint=body.chief_complaint.strip() or 'General Consultation',
+        symptom_severity=body.severity or 'Moderate',
+        patient_notes=body.patient_notes or '',
+        status='WAITING'
+    )
+    db.add(c)
+    db.flush()
+
+    db.add(ConsultationAuthorization(
+        consultation_id=c.id,
+        request_id=r.id,
+        patient_id=patient.id,
+        provider_user_id=doctor.user_id
+    ))
+
+    db.add(AuditLog(user_id=user.id, patient_id=patient.id, action='PATIENT_AUTHORIZED_CONSULTATION_PIN', resource=c.id))
+    db.add(Notification(user_id=doctor.user_id, patient_id=patient.id, message=f'Patient {patient.full_name} scanned your QR, verified PIN, and started consultation: {c.chief_complaint}', resource_id=c.id))
+    db.commit()
+
+    return {
+        'success': True,
+        'consultation_id': c.id,
+        'doctor_name': doctor.full_name,
+        'status': c.status,
+        'message': f'Consultation authorized with PIN and started with Dr. {doctor.full_name}.'
+    }
+

@@ -48,6 +48,9 @@ def patient_access(db, user, patient_id, scope='CLINICAL'):
         doc = entity(db, user, Doctor)
         if grant_exists(db, user, patient_id, ['CLINICAL']):
             return patient
+        # Doctors who completed a consultation with this patient retain read access to patient clinical record
+        if db.query(Consultation).filter(Consultation.patient_id == patient_id, Consultation.doctor_id == doc.id, Consultation.status == 'COMPLETED').first():
+            return patient
     if user.role == 'HOSPITAL_ADMIN':
         hosp = entity(db, user, Hospital)
         authorized = db.query(Referral).filter(Referral.patient_id == patient_id,
@@ -73,17 +76,31 @@ def encounter_access(db, user, consult_id, write=False):
     c = db.get(Consultation, consult_id)
     if not c:
         raise HTTPException(404, 'Consultation not found')
+    
+    # Completed consultations can always be viewed (read-only) by the assigned clinician, patient, or hospital
+    if c.status == 'COMPLETED' and not write:
+        if user.role == 'PATIENT':
+            patient = db.get(Patient, c.patient_id)
+            if patient and patient.user_id == user.id:
+                return c
+        elif user.role == 'DOCTOR':
+            doc = entity(db, user, Doctor)
+            if c.doctor_id == doc.id:
+                return c
+        elif user.role == 'HOSPITAL_ADMIN':
+            hosp = entity(db, user, Hospital)
+            if c.hospital_id == hosp.id:
+                return c
+
     patient_access(db, user, c.patient_id)
     if user.role == 'DOCTOR':
         link=db.get(ConsultationAuthorization, c.id)
         if link:
             if link.patient_id != c.patient_id or link.provider_user_id != user.id:
                 raise HTTPException(403,'Consultation authorization mismatch')
-            approved_request(db,user,c.patient_id,link.request_id)
+            if c.status != 'COMPLETED':
+                approved_request(db,user,c.patient_id,link.request_id)
         else:
-            # Legacy encounters have no request link. Their historical existence does
-            # NOT authorize access: patient_access above requires a current, unrevoked
-            # patient-issued grant (including the original PIN-protected consent QR).
             pass
     if write:
         require_role(user, 'DOCTOR', 'HOSPITAL_ADMIN')

@@ -58,14 +58,180 @@ const HF = (() => {
  async function summaryHistory(){const rows=await api('workflow/summaries/'+patientId);dialog('Saved summaries',rows.map(s=>`<h3>${date(s.created_at)} · ${e(s.method)} · ${e(s.status)}</h3><pre>${e(JSON.stringify(s.content,null,2))}</pre>`).join('')||empty('No summaries yet.'))}
  async function approveSummary(id){const note=prompt('Clinician review note');if(!note)return;try{await api('workflow/summaries/'+id,'PATCH',{status:'CLINICIAN_APPROVED',review_note:note});$('hf-dialog').close();showToast('Summary review saved','success')}catch(err){showToast(err.message,'emergency')}}
  async function versions(){const rows=await api('workflow/versions/'+patientId);dialog('Record corrections',rows.map(v=>`<h3>${e(v.resource)} · ${date(v.created_at)}</h3><p>${e(v.reason)}</p><pre>${e(JSON.stringify({before:v.before,after:v.after},null,2))}</pre>`).join('')||empty('No corrections recorded.'))}
- async function appointments(){const outpatient=await outpatientPanel();follow=await api('workflow/follow-ups');const doctors=providers.filter(p=>p.role==='DOCTOR');$('hf-content').innerHTML=head(user.role==='PATIENT'?'Appointments & follow-ups':'Follow-ups','Follow-up encounters remain linked to the original visit.')+outpatient+table(['Due','Reason','Status','Action'],follow.map(f=>[date(f.due_at),e(f.reason),tag(f.status),f.status==='SCHEDULED'&&user.role==='PATIENT'&&f.doctor_id?button('Start linked intake',`HF.followIntake('${f.id}')`):'']))+(user.role==='PATIENT'?form('hf-intake','Request a consultation',`<div class="hf-form-grid">${select('Doctor','doctor_id',options(doctors))}${select('Primary complaint','complaint',statuses(['Fever','Cough','Blood Pressure','Joint Pain','Weakness','Allergy','Other']))}${input('Duration','duration','number','1')}${select('Duration unit','duration_unit',statuses(['Days','Hours','Weeks','Months']))}${select('Severity','severity',statuses(['Mild','Moderate','Severe']))}</div><label>Describe your symptoms<textarea name="notes"></textarea></label><label>Warning symptoms (comma-separated)<input name="warnings" placeholder="e.g. breathing_difficulty, chest_pain"></label><div id="hf-branch"></div>`,'Submit intake'):empty('Choose an encounter to schedule a follow-up.'));
+ async function appointments(){
+  const outpatient=await outpatientPanel();
+  follow=await api('workflow/follow-ups');
+  const doctors=providers.filter(p=>p.role==='DOCTOR');
+  const myConsultations = user.role==='PATIENT' ? await api('workflow/consultations') : [];
+  const consultHistoryHtml = user.role==='PATIENT' && myConsultations.length ? `
+   <section class="hf-section" style="margin-bottom:20px;">
+    <h2>My Consultations & Visits (Visit History)</h2>
+    ${table(['Visit Date','Doctor / Facility','Chief Complaint','Status','Action'],myConsultations.map(c=>[
+     date(c.created_at),
+     e(c.doctor_name||'Assigned Doctor'),
+     e(c.chief_complaint),
+     tag(c.status),
+     c.status==='COMPLETED'?button('View complete check-up record',`HF.completeVisit('${c.id}')`,'primary'):button('Open encounter',`HF.encounter('${c.id}')`)
+    ]))}
+   </section>` : '';
+
+  $('hf-content').innerHTML=head(user.role==='PATIENT'?'Appointments & follow-ups':'Follow-ups','Follow-up encounters remain linked to the original visit.')+
+   consultHistoryHtml+
+   outpatient+
+   table(['Due','Reason','Status','Action'],follow.map(f=>[date(f.due_at),e(f.reason),tag(f.status),f.status==='SCHEDULED'&&user.role==='PATIENT'&&f.doctor_id?button('Start linked intake',`HF.followIntake('${f.id}')`):'']))+
+   (user.role==='PATIENT'?form('hf-intake','Request a consultation',`<div class="hf-form-grid">${select('Doctor','doctor_id',options(doctors))}${select('Primary complaint','complaint',statuses(['Fever','Cough','Blood Pressure','Joint Pain','Weakness','Allergy','Other']))}${input('Duration','duration','number','1')}${select('Duration unit','duration_unit',statuses(['Days','Hours','Weeks','Months']))}${select('Severity','severity',statuses(['Mild','Moderate','Severe']))}</div><label>Describe your symptoms<textarea name="notes"></textarea></label><label>Warning symptoms (comma-separated)<input name="warnings" placeholder="e.g. breathing_difficulty, chest_pain"></label><div id="hf-branch"></div>`,'Submit intake'):empty('Choose an encounter to schedule a follow-up.'));
   bind('hf-intake',async(d)=>{const branch={};document.querySelectorAll('#hf-branch [name]').forEach(n=>branch[n.name]=n.value);await api('intake/submit','POST',{patient_id:patientId,doctor_id:d.doctor_id,q1_chief_complaint:d.complaint,q2_duration_value:Number(d.duration),q2_duration_unit:d.duration_unit,q3_severity:d.severity,q10_additional_notes:d.notes,q9_warning_symptoms:d.warnings.split(',').map(x=>x.trim()).filter(Boolean),branch_responses:branch});await go('overview')});
   if($('hf-intake')){$('hf-intake').insertAdjacentHTML('beforebegin',form('hf-assist','Describe symptoms in your language',select('Language','language',statuses(['en','hi','mr','hinglish']))+input('Describe symptoms','message'),'Suggest intake fields'));bind('hf-assist',async d=>{const result=await api('ai/chatbot','POST',d),p=result.parsed_symptoms;if(p?.chief_complaint&&Array.from($('hf-intake').elements.complaint.options).some(o=>o.value===p.chief_complaint)){$('hf-intake').elements.complaint.value=p.chief_complaint;await intakeBranch(p.chief_complaint)}$('hf-intake').elements.notes.value=d.message;if(p?.warning_symptoms)$('hf-intake').elements.warnings.value=p.warning_symptoms.join(', ');showToast('Suggested fields added. Review before submitting.','info')});$('hf-intake').elements.complaint.onchange=()=>intakeBranch($('hf-intake').elements.complaint.value);await intakeBranch('Fever')}
  }
  async function intakeBranch(complaint){try{const result=await api('intake/branch/'+encodeURIComponent(complaint));const questions=result.questions||result.branch?.questions||[];$('hf-branch').innerHTML='<h3>Additional intake details</h3>'+questions.map(q=>{const name=q.id||q.key||q.question_id;return q.options?select(q.label||q.text||q.question||name,name,q.options.map(x=>`<option value="${e(typeof x==='object'?x.value:x)}">${e(typeof x==='object'?x.label:x)}</option>`).join('')):input(q.label||q.text||q.question||name,name,'text','',false)}).join('')}catch{$('hf-branch').innerHTML='<p class="hf-muted">Additional questions unavailable; the core intake form remains usable.</p>'}}
  async function followIntake(id){const f=follow.find(x=>x.id===id);const complaint=prompt('Current symptoms / reason',f.reason);if(!complaint)return;try{await api('workflow/consultations','POST',{doctor_id:f.doctor_id,chief_complaint:complaint,follow_up_id:f.id,previous_consultation_id:f.consultation_id});await go('overview')}catch(err){showToast(err.message,'emergency')}}
- async function consultations(){const [rows,pts]=await Promise.all([api('workflow/consultations'),api('workflow/patients')]);encounters=rows;const filtered=page==='queue'?encounters.filter(c=>!['COMPLETED','CANCELLED','NO_SHOW'].includes(c.status)):encounters;$('hf-content').innerHTML=head(page==='queue'?'Consultation queue':'Consultations','Assigned encounters and their clinical status',button('Clinical overview',"HF.go('overview')"))+table(['Patient / age','Complaint','Urgency','Arrival','Status','Action'],filtered.map(c=>[e(c.patient_name)+`<small>${e(pts.find(p=>p.id===c.patient_id)?.age??'Not recorded')} years</small>`,e(c.chief_complaint),tag(c.is_urgent?'URGENT':c.symptom_severity||'NOT_RECORDED'),date(c.created_at),tag(c.status),button('Open encounter',`HF.encounter('${c.id}')`)]));}
- async function encounter(id){const c=encounters.find(x=>x.id===id);if(!c)return;patientId=c.patient_id;const clinical=await api('workflow/consultations/'+id+'/clinical-records');const allergies=await api('workflow/allergies/'+patientId);const cmed=await api('workflow/medications/'+patientId);const hs=providers.filter(x=>x.role==='HOSPITAL_ADMIN'),ps=providers.filter(x=>x.role==='PHARMACY');$('hf-content').innerHTML=head(c.patient_name,c.chief_complaint+' · '+c.id,button('Patient history',"HF.go('history')")+(user.role==='DOCTOR'&&!['COMPLETED','CANCELLED','NO_SHOW'].includes(c.status)?button('Doctor’s Note',`HF.doctorsNote('${id}')`,'primary'):'')+(c.previous_consultation_id?button('Previous encounter',`HF.linkedEncounter('${c.previous_consultation_id}')`):''))+`<div class="hf-notice">Allergies: ${e([...allergies.reported,...allergies.records.filter(x=>x.status==='ACTIVE').map(x=>`${x.substance} (${x.severity}; ${x.source})`)].join(', ')||'Not recorded')}<br>Active medication: ${e(cmed.filter(x=>x.status==='ACTIVE').map(x=>x.name).join(', ')||'None recorded')}</div><section class="hf-section"><h2>Patient intake</h2><p>${e(c.patient_notes||'No additional notes')}</p><pre>${e(JSON.stringify(c.branch_responses||{},null,2))}</pre>${button('Current consultation summary',`HF.currentSummary('${id}')`)} ${tag(c.status)}</section><section class="hf-section"><h2>Recorded diagnoses and vitals</h2>${table(['Record','Status','Correction'],[...clinical.diagnoses.map(d=>[e(d.name),tag(d.status),button('Correct',`HF.correctRecord('diagnosis','${d.id}','${id}')`)]),...clinical.vitals.map(v=>[e(v.name+': '+v.value+' '+v.unit),tag(v.status),button('Correct',`HF.correctRecord('vital','${v.id}','${id}')`)])])}</section>`+form('hf-status','Consultation status',select('Status','status',statuses(['IN_PROGRESS','COMPLETED','CANCELLED','NO_SHOW']))+`<label>Clinical observations<textarea name="observations">${e(c.branch_responses?.clinical_observations||'')}</textarea></label>`+input('Reason for update','reason'))+`<div class="hf-split"><div>${form('hf-diagnosis','Diagnosis',input('Diagnosis','name')+select('Diagnostic certainty','status',statuses(['SUSPECTED','PROVISIONAL','CONFIRMED','RULED_OUT','RESOLVED'])))}${form('hf-vital','Record a vital',select('Measurement','name',statuses(['BP','temperature','pulse','SpO2','weight','glucose']))+input('Value','value')+input('Unit','unit','text','mmHg')+input('Measurement time (UTC; optional)','measured_at','datetime-local','',false))}</div><div>${form('hf-follow','Schedule a follow-up',input('Date and time (UTC)','due_at','datetime-local')+input('Follow-up reason','reason'))}</div></div>`+(c.status==='COMPLETED'?button('View complete check-up record',`HF.completeVisit('${id}')`):'');
+ async function consultations(){
+  const [rows,pts]=await Promise.all([api('workflow/consultations'),api('workflow/patients')]);
+  encounters=rows;
+  const active=encounters.filter(c=>!['COMPLETED','CANCELLED','NO_SHOW'].includes(c.status));
+  const completed=encounters.filter(c=>c.status==='COMPLETED');
+  const showCompleted = page==='completed';
+  const showQueue = page==='queue';
+  const filtered = showCompleted ? completed : (showQueue ? active : encounters);
+  const activeTab = showCompleted ? 'completed' : (showQueue ? 'queue' : 'all');
+
+  $('hf-content').innerHTML=head(showCompleted?'Completed Visit History':showQueue?'Consultation queue':'Consultations','Assigned encounters and their clinical status',button('Clinical overview',"HF.go('overview')"))+
+   `<div class="hf-toolbar" style="margin-bottom:16px;">
+    ${button('Active Queue ('+active.length+')',`HF.filterConsultationView('queue')`,activeTab==='queue'?'primary':'')}
+    ${button('Completed Visits History ('+completed.length+')',`HF.filterConsultationView('completed')`,activeTab==='completed'?'primary':'')}
+    ${button('All Consultations ('+encounters.length+')',`HF.filterConsultationView('all')`,activeTab==='all'?'primary':'')}
+   </div>`+
+   table(['Patient / age','Complaint','Urgency','Arrival / Date','Status','Action'],filtered.map(c=>[
+    e(c.patient_name)+`<small>${e(pts.find(p=>p.id===c.patient_id)?.age??'Not recorded')} years</small>`,
+    e(c.chief_complaint),
+    tag(c.is_urgent?'URGENT':c.symptom_severity||'NOT_RECORDED'),
+    date(c.created_at),
+    tag(c.status),
+    button('Open encounter',`HF.encounter('${c.id}')`)+(c.status==='COMPLETED'?' '+button('View record',`HF.completeVisit('${c.id}')`):'')
+   ]));
+ }
+ function filterConsultationView(v){
+  if(v==='queue')go('queue');
+  else if(v==='completed'){page='completed';consultations();}
+  else go('consultations');
+ }
+ async function encounter(id){
+  const c=encounters.find(x=>x.id===id);
+  if(!c)return;
+  patientId=c.patient_id;
+  const clinical=await api('workflow/consultations/'+id+'/clinical-records');
+  const allergies=await api('workflow/allergies/'+patientId);
+  const cmed=await api('workflow/medications/'+patientId);
+  const hs=providers.filter(x=>x.role==='HOSPITAL_ADMIN'),ps=providers.filter(x=>x.role==='PHARMACY');
+
+  // Medication and Prescription Changes Section
+  let medSection='';
+  const changes = clinical.plan?.changes || [];
+  const rxList = clinical.prescriptions || [];
+  const planMeds = clinical.plan?.medications || [];
+  let medRows = [];
+  if(changes.length){
+   changes.forEach(ch=>{
+    medRows.push([
+     `<strong>${e(ch.action?.toUpperCase())}</strong>`,
+     e(ch.revised?.name||'Medicine'),
+     e([ch.revised?.frequency,ch.revised?.dosage].filter(Boolean).join(' · ')),
+     e(ch.reason||'Prescription amendment')
+    ]);
+   });
+  } else if(planMeds.length){
+   planMeds.forEach(m=>{
+    medRows.push([
+     `<strong>${e(m.action?.toUpperCase())}</strong>`,
+     e(m.name||'Medicine'),
+     `${m.times_per_day} times/day · ${e(m.food||'Not specified')}${m.dosage?' · '+e(m.dosage):''}`,
+     e(m.reason||(m.quantity?'Dispensing qty: '+m.quantity:'Instructions only'))
+    ]);
+   });
+  }
+  rxList.forEach(rx=>{
+   (rx.medicines||[]).forEach(m=>{
+    medRows.push([
+     tag(rx.status),
+     `<strong>${e(m.name)}</strong>`,
+     e([m.dosage,m.frequency,m.food].filter(Boolean).join(' · ')),
+     m.quantity?`Dispensing quantity: ${e(m.quantity)}`:'Instructions only'
+    ]);
+   });
+  });
+  if(medRows.length){
+   medSection = `<section class="hf-section"><h2>Prescription & Medication Changes (Consultation Decisions)</h2>${table(['Action / Status','Medicine','Dosage & Frequency','Instructions / Reason'],medRows)}</section>`;
+  } else {
+   medSection = `<section class="hf-section"><h2>Prescription & Medication Decisions</h2>${empty('No prescription decisions recorded yet for this visit.')}</section>`;
+  }
+
+  // Hospital Referrals Section
+  let refSection='';
+  const refsList = clinical.referrals || [];
+  const planRefs = clinical.plan?.referrals || [];
+  let refRows = [];
+  refsList.forEach(r=>{
+   refRows.push([
+    `<strong>${e(r.hospital_name||r.name)}</strong>`,
+    e(r.specialty||'General'),
+    tag(r.priority||'ROUTINE'),
+    e(r.reason),
+    tag(r.status||'SENT')
+   ]);
+  });
+  planRefs.forEach(r=>{
+   if(!refsList.some(x=>x.name===r.name||(r.hospital_id&&x.hospital_id===r.hospital_id))){
+    refRows.push([
+     `<strong>${e(r.name)}</strong>`,
+     e(r.specialty||'Not specified'),
+     tag(r.priority||'ROUTINE'),
+     e(r.reason),
+     tag(r.hospital_id?'REQUESTED':'EXTERNAL_LETTER')
+    ]);
+   }
+  });
+  if(refRows.length){
+   refSection = `<section class="hf-section"><h2>Hospital Referrals</h2>${table(['Hospital Destination','Specialty','Priority','Referral Reason','Status'],refRows)}</section>`;
+  } else {
+   refSection = `<section class="hf-section"><h2>Hospital Referrals</h2>${empty('No hospital referrals recorded for this visit.')}</section>`;
+  }
+
+  // Doctor's Clinical Note & Assessment Section
+  let noteSection='';
+  const noteObj = clinical.doctor_note || (clinical.plan ? {
+   confirmed_diagnosis: clinical.plan.assessment,
+   clinical_observations: clinical.plan.observations,
+   treatment_plan: clinical.plan.advice
+  } : null);
+  if(noteObj && (noteObj.confirmed_diagnosis || noteObj.clinical_observations || noteObj.treatment_plan)){
+   noteSection = `<section class="hf-section"><h2>Doctor’s Clinical Note & Assessment</h2><p><strong>Confirmed Diagnosis / Assessment:</strong> ${e(noteObj.confirmed_diagnosis||'None recorded')}</p><p><strong>Observations:</strong> ${e(noteObj.clinical_observations||'None recorded')}</p><p><strong>Treatment Advice:</strong> ${e(noteObj.treatment_plan||'None recorded')}</p></section>`;
+  }
+
+  // Live Consultation Toolbar for Doctors
+  let doctorToolbar = '';
+  if(user.role==='DOCTOR' && !['COMPLETED','CANCELLED','NO_SHOW'].includes(c.status)){
+   doctorToolbar = `<div class="hf-toolbar" style="margin:16px 0;padding:12px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;">
+    <strong style="margin-right:8px;color:#166534;">Clinical Actions:</strong>
+    ${button('Doctor’s Note Editor',`HF.doctorsNote('${id}')`,'primary')}
+    ${button('Change Frequency',`HF.doctorsNote('${id}');setTimeout(()=>HF.decisionForm('frequency'),150);`)}
+    ${button('Replace Medication',`HF.doctorsNote('${id}');setTimeout(()=>HF.decisionForm('replace'),150);`)}
+    ${button('Add Medication',`HF.doctorsNote('${id}');setTimeout(()=>HF.decisionForm('add'),150);`)}
+    ${button('Refer to Hospital',`HF.doctorsNote('${id}');setTimeout(()=>HF.referralForm(),150);`)}
+    ${button('Finalize Check-up',`HF.doctorsNote('${id}');setTimeout(()=>HF.reviewNote(),150);`,'primary')}
+   </div>`;
+  }
+
+  $('hf-content').innerHTML=head(c.patient_name,c.chief_complaint+' · '+c.id,button('Patient history',"HF.go('history')")+(user.role==='DOCTOR'&&!['COMPLETED','CANCELLED','NO_SHOW'].includes(c.status)?button('Doctor’s Note',`HF.doctorsNote('${id}')`,'primary'):'')+(c.status==='COMPLETED'?button('View check-up record',`HF.completeVisit('${id}')`,'primary'):'')+(c.previous_consultation_id?button('Previous encounter',`HF.linkedEncounter('${c.previous_consultation_id}')`):''))+
+   `<div class="hf-notice">Allergies: ${e([...allergies.reported,...allergies.records.filter(x=>x.status==='ACTIVE').map(x=>`${x.substance} (${x.severity}; ${x.source})`)].join(', ')||'Not recorded')}<br>Active medication: ${e(cmed.filter(x=>x.status==='ACTIVE').map(x=>x.name).join(', ')||'None recorded')}</div>`+
+   doctorToolbar+
+   `<section class="hf-section"><h2>Patient intake</h2><p>${e(c.patient_notes||'No additional notes')}</p><pre>${e(JSON.stringify(c.branch_responses||{},null,2))}</pre>${button('Current consultation summary',`HF.currentSummary('${id}')`)} ${tag(c.status)}</section>`+
+   medSection+
+   refSection+
+   noteSection+
+   `<section class="hf-section"><h2>Recorded diagnoses and vitals</h2>${table(['Record','Status','Correction'],[...clinical.diagnoses.map(d=>[e(d.name),tag(d.status),button('Correct',`HF.correctRecord('diagnosis','${d.id}','${id}')`)]),...clinical.vitals.map(v=>[e(v.name+': '+v.value+' '+v.unit),tag(v.status),button('Correct',`HF.correctRecord('vital','${v.id}','${id}')`)])])}</section>`+
+   form('hf-status','Consultation status',select('Status','status',statuses(['IN_PROGRESS','COMPLETED','CANCELLED','NO_SHOW']))+`<label>Clinical observations<textarea name="observations">${e(c.branch_responses?.clinical_observations||'')}</textarea></label>`+input('Reason for update','reason'))+
+   `<div class="hf-split"><div>${form('hf-diagnosis','Diagnosis',input('Diagnosis','name')+select('Diagnostic certainty','status',statuses(['SUSPECTED','PROVISIONAL','CONFIRMED','RULED_OUT','RESOLVED'])))}${form('hf-vital','Record a vital',select('Measurement','name',statuses(['BP','temperature','pulse','SpO2','weight','glucose']))+input('Value','value')+input('Unit','unit','text','mmHg')+input('Measurement time (UTC; optional)','measured_at','datetime-local','',false))}</div><div>${form('hf-follow','Schedule a follow-up',input('Date and time (UTC)','due_at','datetime-local')+input('Follow-up reason','reason'))}</div></div>`+
+   (c.status==='COMPLETED'?button('View complete check-up record',`HF.completeVisit('${id}')`,'primary'):'');
   HUI.workspace(user.role);
   if(user.role==='HOSPITAL_ADMIN'){$('hf-diagnosis').style.display='none';$('hf-status').style.display='none';}
   $('hf-status').elements.status.value=c.status==='COMPLETED'?'COMPLETED':'IN_PROGRESS';
@@ -104,12 +270,14 @@ const HF = (() => {
  function printRecord(i){const r=HF.recordDocs[i],win=window.open('','_blank');if(!win){showToast('Allow popups to print this document','info');return}win.document.write('<!doctype html><title>'+e(r.title)+'</title><h1>'+e(r.title)+'</h1><pre style="white-space:pre-wrap">'+e(JSON.stringify(r.content,null,2))+'</pre>');win.document.close();win.print()}
  async function download(id){try{const r=await fetch('/api/workflow/document/'+id+'/download',{headers:{Authorization:'Bearer '+currentToken}});if(!r.ok)throw new Error('Download failed');const url=URL.createObjectURL(await r.blob());const a=document.createElement('a');a.href=url;a.download=r.headers.get('content-disposition')?.match(/filename="([^"]+)"/)?.[1]||'medical-record';a.click();setTimeout(()=>URL.revokeObjectURL(url),10000)}catch(err){showToast(err.message,'emergency')}}
  async function documentError(id){const reason=prompt('Reason for correction');if(!reason)return;try{await api('workflow/records/document/'+id,'PATCH',{status:'ENTERED_IN_ERROR',reason});await go('documents')}catch(err){showToast(err.message,'emergency')}}
- async function nearby(){const coords=userCurrentCoords||{lat:user.latitude,lng:user.longitude};$('hf-content').innerHTML=head('Nearby care','Registered facilities are available even if map services fail.')+`<div class="hf-toolbar"><input id="hf-search" placeholder="Facility or address" aria-label="Search facilities"><select id="hf-type" aria-label="Facility type">${statuses(['all','hospital','pharmacy','clinic','registered'])}</select>${button('Search','HF.loadFacilities()')}${button('Use current location','HF.locate()')}<label>Latitude <input id="hf-lat" type="number" step="any" value="${e(coords.lat??'')}"></label><label>Longitude <input id="hf-lng" type="number" step="any" value="${e(coords.lng??'')}"></label></div><div id="hf-facilities">Loading facilities…</div><div id="hf-map" class="hf-map"></div>`;await loadFacilities();}
- async function loadFacilities(){try{const lat=$('hf-lat').value,lng=$('hf-lng').value,q=new URLSearchParams({search_query:$('hf-search').value,facility_type:$('hf-type').value,radius_km:10});if(lat!==''&&lng!==''){q.set('lat',lat);q.set('lng',lng)}const data=await api('clinical/facilities/nearby?'+q);const rows=data.facilities;$('hf-facilities').innerHTML=table(['Facility','Address','Distance','Beds','Source','Action'],rows.map((f,i)=>[e(f.name)+`<small>${e(f.facility_type)}</small>`,e(f.address),e(f.distance||'Unavailable'),f.available_beds??'—',e(f.is_registered?'Registered':'Map listing'),button('View',`HF.facility(${i})`)]));HF.facilities=rows;
-    if(window.L){if(map)map.remove();map=L.map('hf-map').setView([lat===''?19.076:Number(lat),lng===''?72.8777:Number(lng)],12);L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© OpenStreetMap contributors'}).addTo(map);rows.filter(f=>f.latitude!=null&&f.longitude!=null).forEach(f=>{const popup=document.createElement('div');popup.textContent=f.name+' · '+f.address;L.marker([f.latitude,f.longitude]).addTo(map).bindPopup(popup)})}else $('hf-map').innerHTML=empty('Map unavailable. The facility list remains accessible.');
+ async function nearby(){const coords=userCurrentCoords||{lat:user.latitude,lng:user.longitude};$('hf-content').innerHTML=head('Nearby care','Registered facilities and emergency medical centers near you.')+`<div class="hf-toolbar"><input id="hf-search" placeholder="Facility or address" aria-label="Search facilities"><select id="hf-type" aria-label="Facility type">${statuses(['all','hospital','pharmacy','clinic','registered'])}</select>${button('Search','HF.loadFacilities()')}${button('📍 Use current location','HF.locate()','primary')}<label>Latitude <input id="hf-lat" type="number" step="any" value="${e(coords.lat??'')}"></label><label>Longitude <input id="hf-lng" type="number" step="any" value="${e(coords.lng??'')}"></label></div><div id="hf-facilities">Loading facilities…</div><div id="hf-map" class="hf-map"></div>`;await loadFacilities();}
+ async function loadFacilities(){try{const latEl=$('hf-lat'),lngEl=$('hf-lng');const lat=latEl?latEl.value.trim():'',lng=lngEl?lngEl.value.trim():'';const q=new URLSearchParams({search_query:$('hf-search')?$('hf-search').value:'',facility_type:$('hf-type')?$('hf-type').value:'all',radius_km:50});if(lat!==''&&lng!==''){q.set('lat',lat);q.set('lng',lng)}const data=await api('clinical/facilities/nearby?'+q);const rows=data.facilities||[];$('hf-facilities').innerHTML=table(['Facility','Address','Distance','Beds','Source','Action'],rows.map((f,i)=>[e(f.name)+`<small>${e(f.facility_type)}</small>`,e(f.address),e(f.distance||'Unavailable'),f.available_beds??'—',e(f.is_registered?'Registered':'Map listing'),button('View',`HF.facility(${i})`)]));HF.facilities=rows;
+    if(window.L){if(map)map.remove();const hasUserCoord=(lat!==''&&lng!==''&&!isNaN(Number(lat))&&!isNaN(Number(lng)));const centerLat=hasUserCoord?Number(lat):19.0760;const centerLng=hasUserCoord?Number(lng):72.8777;map=L.map('hf-map').setView([centerLat,centerLng],hasUserCoord?13:12);L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',{attribution:'Tiles &copy; Esri &mdash; Source: Esri, DeLorme, NAVTEQ, USGS, TomTom',maxZoom:18}).addTo(map);
+    if(hasUserCoord){const userIcon=L.divIcon({className:'hf-user-pin',html:'<div style="display:flex;align-items:center;justify-content:center;width:30px;height:30px;background:#2563eb;color:#ffffff;border-radius:50%;border:3px solid #ffffff;box-shadow:0 0 12px rgba(37,99,235,0.9);font-size:14px;cursor:pointer;">📍</div>',iconSize:[30,30],iconAnchor:[15,15]});L.marker([centerLat,centerLng],{icon:userIcon,zIndexOffset:1000}).addTo(map).bindPopup(`<div style="padding:4px;"><strong>📍 Your Current Location</strong><br><small style="color:#64748b;">Latitude: ${centerLat.toFixed(5)}<br>Longitude: ${centerLng.toFixed(5)}</small></div>`).openPopup();L.circle([centerLat,centerLng],{radius:800,color:'#2563eb',fillColor:'#3b82f6',fillOpacity:0.15,weight:1.5}).addTo(map);}
+    rows.filter(f=>f.latitude!=null&&f.longitude!=null).forEach(f=>{const popup=document.createElement('div');popup.innerHTML=`<strong>${e(f.name)}</strong><br><small style="color:#64748b;">${e(f.facility_type||'')} · ${e(f.address||'')}</small><br><b style="color:#2563eb;">Distance: ${e(f.distance||'')}</b>`;L.marker([f.latitude,f.longitude]).addTo(map).bindPopup(popup)});setTimeout(()=>map.invalidateSize(),200);}else $('hf-map').innerHTML=empty('Map unavailable. The facility list remains accessible.');
   }catch(err){$('hf-facilities').innerHTML=`<div class="hf-error">${e(err.message)}</div>`}}
  function facility(i){const f=HF.facilities[i];dialog(f.name,`<p>${e(f.facility_type)} · ${e(f.is_registered?'Registered in PulseSync':'External map listing')}</p><p>${e(f.address)}</p><p>Distance: ${e(f.distance||'Unavailable')}</p><p>Contact: ${e(f.phone||'Not recorded')}</p><p>${e((f.availableMeds||[]).join(' · '))}</p>`)}
- function locate(){if(!navigator.geolocation){showToast('Location unavailable; enter coordinates','info');return}navigator.geolocation.getCurrentPosition(p=>{$('hf-lat').value=p.coords.latitude;$('hf-lng').value=p.coords.longitude;userCurrentCoords={lat:p.coords.latitude,lng:p.coords.longitude};loadFacilities()},()=>showToast('Location permission unavailable. Enter coordinates manually.','info'))}
+ function locate(){if(!navigator.geolocation){showToast('Geolocation is not supported by your browser; enter coordinates manually.','info');return}showToast('Acquiring your current GPS location...','info');navigator.geolocation.getCurrentPosition(p=>{const lat=p.coords.latitude;const lng=p.coords.longitude;if($('hf-lat'))$('hf-lat').value=lat;if($('hf-lng'))$('hf-lng').value=lng;userCurrentCoords={lat,lng};showToast('Current GPS location detected!','success');loadFacilities()},err=>{let msg='Location permission denied. Please allow location permissions in your browser or enter coordinates manually.';if(err.code===2)msg='Location unavailable. Please check your device GPS.';else if(err.code===3)msg='Location request timed out.';showToast(msg,'info')},{enableHighAccuracy:true,timeout:10000,maximumAge:60000})}
  async function consent(){const grants=await api('workflow/access/'+patientId);$('hf-content').innerHTML=head('Consent & QR access','Identification, clinical access, dispensing, and emergency access are separate.')+`<div class="hf-notice">A patient identification QR does not grant medical access. Provider grants expire and can be revoked. Emergency tokens reveal a limited profile only.</div><div class="hf-toolbar">${button('Identification QR','HF.identityQR()')}</div>`+form('hf-grant','Create temporary access',select('Scope','scope',statuses(['CLINICAL','PRESCRIPTION','EMERGENCY']))+`<label>Provider (not needed for emergency)<select name="provider_user_id"><option value="">Select provider</option>${providers.map(p=>`<option value="${e(p.user_id)}">${e(p.name)} · ${e(p.role)}</option>`).join('')}</select></label>`+PinAccess.field('Patient PIN (clinical / prescription consent)','pin')+input('Expiry in minutes (1–1440)','minutes','number','30'),'Create access QR')+table(['Scope','Provider','Expiry','State','Action'],grants.map(g=>[e(g.scope),e(providers.find(p=>p.user_id===g.user_id)?.name||'Emergency bearer'),date(g.expires_at),g.revoked_at?'Revoked':new Date(g.expires_at+'Z')<new Date()?'Expired':'Valid',!g.revoked_at?button('Revoke',`HF.revoke('${g.id}')`):'']));bind('hf-grant',async d=>{const data=await api('workflow/access/'+patientId,'POST',{pin:d.pin,scope:d.scope,provider_user_id:d.provider_user_id||null,minutes:Number(d.minutes)});dialog('Temporary access QR',`<img class="hf-qr" src="${e(data.qr_image_base64)}" alt="Temporary consent QR"><p>Expires ${date(data.grant.expires_at)}</p><textarea readonly style="width:100%;height:70px">${e(data.payload)}</textarea>`)});}
  async function myQR(){return user.role==='PATIENT'?identityQR():providerQR()}
  async function scanResult(text){
@@ -136,7 +304,19 @@ const HF = (() => {
    const role={doctor:'DOCTOR',hospital:'HOSPITAL_ADMIN',pharmacy:'PHARMACY'}[provider[1]];
    const list=await api('workflow/providers'),row=list.find(x=>x.id===provider[2]&&x.role===role);
    if(!row)throw new Error('This registered provider could not be found.');
-   QRTools.close();dialog('Registered provider',`<p><strong>${e(row.name)}</strong></p><p>${e(role.replaceAll('_',' '))}</p><a href="${e(url.pathname)}" target="_blank" rel="noopener">View provider details</a>${user.role==='PATIENT'&&role==='DOCTOR'?button('Start consultation',"HF.scannedDoctor('"+row.id+"')"):''}`);return;
+   QRTools.close();
+   const isDoc=user.role==='PATIENT'&&role==='DOCTOR';
+   const consultForm=isDoc?`<form id="hf-doctor-scan-consult" style="margin-top:14px;padding:14px;background:#f8fafc;border:1px solid #cbd5e1;border-radius:10px;"><h3 style="font-size:14px;color:#0f172a;margin-bottom:6px;">Start Consultation with Dr. ${e(row.name)}</h3><p class="hf-muted" style="font-size:12px;margin-bottom:10px;">Enter your 6-digit PIN (entered during registration) to authorize clinical access and start consultation.</p><label>Reason / chief complaint<input name="chief_complaint" placeholder="e.g. Fever, Cough, Chest Pain, General Checkup" required></label><label>Severity<select name="severity"><option value="Mild">Mild</option><option value="Moderate" selected>Moderate</option><option value="Severe">Severe</option></select></label><label>Symptoms notes (optional)<textarea name="patient_notes" placeholder="Duration or details..." style="height:55px;"></textarea></label><label>Your 6-Digit Registration PIN<input type="password" name="pin" maxlength="6" pattern="\\d{6}" placeholder="••••••" required autocomplete="off" style="letter-spacing:4px;font-size:16px;"></label><button type="submit" class="primary" style="margin-top:10px;width:100%;">Authorize with PIN & Start Consultation</button><div class="form-message" role="status"></div></form>`:'';
+   dialog('Registered provider',`<p><strong>${e(row.name)}</strong></p><p>${e(role.replaceAll('_',' '))}</p><a href="${e(url.pathname)}" target="_blank" rel="noopener">View provider details</a>${isDoc?consultForm:''}`);
+   if(isDoc){
+    bind('hf-doctor-scan-consult',async d=>{
+     const res=await api('workflow/consultations/patient-scan-doctor','POST',{doctor_id:row.id,pin:d.pin,chief_complaint:d.chief_complaint,severity:d.severity,patient_notes:d.patient_notes});
+     showToast(res.message||'Consultation authorized with PIN!','success');
+     $('hf-dialog').close();
+     await go('appointments');
+    });
+   }
+   return;
   }
   if(/^\/api\/workflow\/emergency\/[A-Za-z0-9_-]+$/.test(url.pathname)){
    const result=await api(url.pathname.slice(5));QRTools.close();dialog('Limited emergency profile',`<pre>${e(JSON.stringify(result,null,2))}</pre>`);return;
@@ -171,7 +351,7 @@ const HF = (() => {
  async function restock(id){const qty=prompt('Quantity to add');if(!qty)return;try{await api('clinical/pharmacy/restock','POST',{inventory_id:id,quantity_to_add:Number(qty)});await go('inventory')}catch(err){showToast(err.message,'emergency')}}
  async function settings(){const role=user.role;const fields=['name','email','phone',...role==='DOCTOR'?['specialization','clinic_name','clinic_address']:role==='HOSPITAL_ADMIN'?['hospital_name','address','city','emergency_phone']:['store_name','address','phone']];$('hf-content').innerHTML=head(role==='DOCTOR'?'Clinic settings':role==='HOSPITAL_ADMIN'?'Hospital settings':'Store settings','Registered account and provider information')+table(['Field','Value'],fields.map(k=>[e(k.replaceAll('_',' ')),e(user[k]||'Not recorded')]))+button('Provider QR','HF.providerQR()')+form('hf-provider','Provider location',input('Street address','address','text',user.address||user.clinic_address||'',false)+input('City','city','text',user.city||'',false)+input('Latitude (optional)','latitude','number',user.latitude??'',false)+input('Longitude (optional)','longitude','number',user.longitude??'',false))+(role==='DOCTOR'?form('hf-affiliation','Join a hospital',input('Hospital-issued invitation','invitation'),'Join hospital'):'');if($('hf-provider')){$('hf-provider').elements.latitude.step='any';$('hf-provider').elements.longitude.step='any';bind('hf-provider',async d=>{d.latitude=d.latitude===''?null:Number(d.latitude);d.longitude=d.longitude===''?null:Number(d.longitude);await api('workflow/provider-profile','PATCH',d);const me=await api('auth/me');currentUser=user=me.user;await go('settings')})}bind('hf-affiliation',async d=>{await api('workflow/doctor/affiliation','POST',d);const me=await api('auth/me');currentUser=user=me.user;await go('settings')})}
  async function providerQR(){try{const kind=user.role==='DOCTOR'?'doctor':user.role==='HOSPITAL_ADMIN'?'hospital':'pharmacy',id=user.doctor_id||user.hospital_id||user.pharmacy_id;const d=await api('qr/'+kind+'/'+id);dialog('Provider QR',`<img class="hf-qr" src="${e(d.qr_image_base64)}" alt="Provider QR"><p><a href="${e(d.web_url)}" target="_blank" rel="noopener">Open provider page</a></p>`)}catch(err){showToast(err.message,'emergency')}}
- function pickLocation(){const box=$('registration-map');box.style.display='block';if(!window.L){box.textContent='Map unavailable. Enter latitude and longitude manually.';return}if(!regMap){regMap=L.map('registration-map').setView([19.076,72.8777],11);L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© OpenStreetMap contributors'}).addTo(regMap);let marker;regMap.on('click',ev=>{$('reg-lat').value=ev.latlng.lat.toFixed(6);$('reg-lng').value=ev.latlng.lng.toFixed(6);if(marker)marker.remove();marker=L.marker(ev.latlng).addTo(regMap);$('reg-location-status').textContent='Map location selected.'})}setTimeout(()=>regMap.invalidateSize(),0)}
+ function pickLocation(){const box=$('registration-map');box.style.display='block';if(!window.L){box.textContent='Map unavailable. Enter latitude and longitude manually.';return}if(!regMap){regMap=L.map('registration-map').setView([19.0760,72.8777],11);L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',{attribution:'Tiles &copy; Esri &mdash; Source: Esri, DeLorme, NAVTEQ, USGS, TomTom',maxZoom:18}).addTo(regMap);let marker;regMap.on('click',ev=>{$('reg-lat').value=ev.latlng.lat.toFixed(6);$('reg-lng').value=ev.latlng.lng.toFixed(6);if(marker)marker.remove();marker=L.marker(ev.latlng).addTo(regMap);$('reg-location-status').textContent='Map location selected: '+ev.latlng.lat.toFixed(4)+', '+ev.latlng.lng.toFixed(4);})}setTimeout(()=>regMap.invalidateSize(),0)}
  async function emergencyAccess(){await go("consent");const form=$("hf-grant");if(form){form.elements.scope.value="EMERGENCY";form.elements.provider_user_id.value="";form.elements.minutes.value="30";form.scrollIntoView({block:"center"});form.elements.minutes.focus()}}
 
  let visitLocation={},visitDraft,visitMeds=[],visitCid,visitRevision=0,visitFacilities=[],lastRecord;
@@ -206,5 +386,5 @@ const HF = (() => {
 
 
  function externalLetter(i,download){const r=lastRecord.note.referrals[i],v=lastRecord.visit;const content=`<h1>Hospital referral letter</h1><p>Patient: ${e(v.patient)} · Visit: ${date(v.date)}</p><p>Referring doctor: ${e(v.doctor)} · ${e(v.facility||'Facility not recorded')}</p><h2>${e(r.name)}</h2><p>${e(r.address)} · ${e(r.specialty)} · ${e(r.priority)}</p><p>Reason: ${e(r.reason)}</p><p>Clinical summary: ${e(r.clinical_summary)}</p><p>Preferred time: ${date(r.preferred_at)}</p><p>External hospital: no notification or appointment booking occurred.</p>`;const html='<!doctype html><meta charset="utf-8"><title>Referral letter</title><body style="font:16px Arial;margin:40px;line-height:1.6">'+content+'</body>';if(download){const url=URL.createObjectURL(new Blob([html],{type:'text/html'}));const a=document.createElement('a');a.href=url;a.download='HealthFlow-referral-letter.html';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)}else{const w=window.open('','_blank');if(!w){showToast('Allow pop-ups to print','info');return}w.document.write(html);w.document.close();w.print();}}
- return {requestScannedAccess,checkScannedAccess,startScannedConsultation,externalLetter,doctorsNote,renderNote,decisionForm,generateMedRows,addMedRow,removeDecision,referralForm,searchVisitHospitals,chooseVisitHospital,saveNote,reviewNote,finalizeNote,completeVisit,printVisit,downloadVisit,respondAppointment,myQR,scanResult,scannedDoctor,mount,go,relatedRecord,emergencyAccess,filterHistory,resetHistory,linkedEncounter,encounter,recordDoc,printRecord,correctRecord,summarize,summaryHistory,approveSummary,versions,followIntake,currentSummary,dispense,medicationReview,stopMedication,advanceReferral,referralDetail,specialist,createSpecialist,patientHistory,discharge,bedStatus,invitation,download,documentError,loadFacilities,facility,locate,identityQR,revoke,read,restock,providerQR,pickLocation};
+ return {filterConsultationView,requestScannedAccess,checkScannedAccess,startScannedConsultation,externalLetter,doctorsNote,renderNote,decisionForm,generateMedRows,addMedRow,removeDecision,referralForm,searchVisitHospitals,chooseVisitHospital,saveNote,reviewNote,finalizeNote,completeVisit,printVisit,downloadVisit,respondAppointment,myQR,scanResult,scannedDoctor,mount,go,relatedRecord,emergencyAccess,filterHistory,resetHistory,linkedEncounter,encounter,recordDoc,printRecord,correctRecord,summarize,summaryHistory,approveSummary,versions,followIntake,currentSummary,dispense,medicationReview,stopMedication,advanceReferral,referralDetail,specialist,createSpecialist,patientHistory,discharge,bedStatus,invitation,download,documentError,loadFacilities,facility,locate,identityQR,revoke,read,restock,providerQR,pickLocation};
 })();

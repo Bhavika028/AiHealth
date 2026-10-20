@@ -22,7 +22,9 @@ RAW_DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./pulsesync.db")
 
 # Normalise Postgres URL format if necessary (e.g. postgres:// -> postgresql://)
 if RAW_DATABASE_URL.startswith("postgres://"):
-    RAW_DATABASE_URL = RAW_DATABASE_URL.replace("postgres://", "postgresql://", 1)
+    RAW_DATABASE_URL = RAW_DATABASE_URL.replace("postgres://", "postgresql+psycopg2://", 1)
+elif RAW_DATABASE_URL.startswith("postgresql://"):
+    RAW_DATABASE_URL = RAW_DATABASE_URL.replace("postgresql://", "postgresql+psycopg2://", 1)
 
 def create_active_engine(db_url: str):
     """Attempt creating engine and verifying connection, fallback to SQLite if failed."""

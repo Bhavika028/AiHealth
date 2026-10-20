@@ -857,8 +857,25 @@ def inventory_create(body:InventoryCreate,db:Session=Depends(get_db),user=Depend
 @router.get('/consultations/{cid}/clinical-records')
 def clinical_records(cid:str,db:Session=Depends(get_db),user=Depends(current_user)):
     c=encounter_access(db,user,cid)
-    return {'diagnoses':[serial(d) for d in db.query(Diagnosis).filter_by(consultation_id=cid)],
-      'vitals':[serial(v) for v in db.query(Vital).filter_by(consultation_id=cid)]}
+    plan=db.get(ConsultationPlan,cid)
+    note=db.query(DoctorNote).filter_by(consultation_id=cid).first()
+    rx_list=db.query(Prescription).filter_by(consultation_id=cid).all()
+    ref_list=db.query(Referral).filter_by(consultation_id=cid).all()
+    med_list=db.query(Medication).filter_by(consultation_id=cid).all()
+    return {
+        'diagnoses':[serial(d) for d in db.query(Diagnosis).filter_by(consultation_id=cid)],
+        'vitals':[serial(v) for v in db.query(Vital).filter_by(consultation_id=cid)],
+        'plan': plan.content if plan else None,
+        'finalized_at': plan.finalized_at.isoformat() if (plan and plan.finalized_at) else None,
+        'doctor_note': {
+            'confirmed_diagnosis': note.confirmed_diagnosis,
+            'clinical_observations': note.clinical_observations,
+            'treatment_plan': note.treatment_plan
+        } if note else None,
+        'prescriptions': [serial(p) for p in rx_list],
+        'medications': [serial(m) for m in med_list],
+        'referrals': [dict(serial(r), hospital_name=db.get(Hospital, r.hospital_id).name if r.hospital_id and db.get(Hospital, r.hospital_id) else r.name) for r in ref_list]
+    }
 
 class ProviderUpdate(BaseModel):
     address:str
