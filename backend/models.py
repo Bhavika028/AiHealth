@@ -29,6 +29,9 @@ class User(Base):
     name = Column(String(255), nullable=False)
     phone = Column(String(32), nullable=True)
     password_hash = Column(String(255), nullable=True)
+    pin_hash = Column(String(255), nullable=True)
+    pin_failures = Column(Integer, default=0)
+    pin_locked_until = Column(DateTime, nullable=True)
     role = Column(String(32), nullable=False, default="PATIENT")  # PATIENT, DOCTOR, HOSPITAL_ADMIN, PHARMACY
     language_preference = Column(String(16), default="en")  # en, hi
     is_active = Column(Boolean, default=True)
@@ -58,6 +61,8 @@ class User(Base):
 # ==============================================================================
 class Patient(Base):
     __tablename__ = "patients"
+
+    last_verified_at = Column(DateTime, nullable=True)
 
     id = Column(String(64), primary_key=True, default=generate_uuid)
     user_id = Column(String(64), ForeignKey("users.id", ondelete="CASCADE"), unique=True, nullable=False)
@@ -165,6 +170,9 @@ class Clinic(Base):
 class Hospital(Base):
     __tablename__ = "hospitals"
 
+    user_id = Column(String(64), ForeignKey("users.id"), unique=True, nullable=True)
+    is_active = Column(Boolean, default=True)
+
     id = Column(String(64), primary_key=True, default=generate_uuid)
     name = Column(String(255), nullable=False)
     registration_no = Column(String(128), unique=True, nullable=True)
@@ -193,7 +201,7 @@ class Hospital(Base):
             "address": self.address,
             "city": self.city,
             "emergency_phone": self.emergency_phone,
-            "treatments": self.treatments or ["Cardiology", "Critical Care", "Neurology", "General Medicine"],
+            "treatments": self.treatments or [],
             "total_doctors": self.total_doctors,
             "total_wards": self.total_wards,
             "total_icu_beds": self.total_icu_beds,
@@ -240,10 +248,10 @@ class Doctor(Base):
             "hospital_id": self.hospital_id,
             "full_name": self.full_name,
             "specialization": self.specialization,
-            "education": self.education or "MBBS, MD - Senior Consultant",
+            "education": self.education or "Not recorded",
             "license_no": self.license_no,
-            "clinic_name": self.clinic_name or (self.clinic.name if self.clinic else "PulseSync Care Clinic"),
-            "clinic_address": self.clinic_address or (self.clinic.address if self.clinic else "Central Medical Ave"),
+            "clinic_name": self.clinic_name or (self.clinic.name if self.clinic else "Not recorded"),
+            "clinic_address": self.clinic_address or (self.clinic.address if self.clinic else "Not recorded"),
             "patients_checked_count": self.patients_checked_count,
             "available_hours": self.available_hours or {},
             "is_verified": self.is_verified
@@ -255,6 +263,8 @@ class Doctor(Base):
 # ==============================================================================
 class WardAndBed(Base):
     __tablename__ = "wards_and_beds"
+
+    state = Column(String(32), default="AVAILABLE")
 
     id = Column(String(64), primary_key=True, default=generate_uuid)
     hospital_id = Column(String(64), ForeignKey("hospitals.id", ondelete="CASCADE"), nullable=False)
@@ -299,6 +309,10 @@ class WardAndBed(Base):
 # ==============================================================================
 class Consultation(Base):
     __tablename__ = "consultations"
+
+    hospital_id = Column(String(64), ForeignKey("hospitals.id"), nullable=True)
+    referral_id = Column(String(64), ForeignKey("referrals.id", use_alter=True, name="fk_consultation_referral"), nullable=True)
+    created_by = Column(String(64), ForeignKey("users.id"), nullable=True)
 
     id = Column(String(64), primary_key=True, default=generate_uuid)
     patient_id = Column(String(64), ForeignKey("patients.id", ondelete="CASCADE"), nullable=False, index=True)

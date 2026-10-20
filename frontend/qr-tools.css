@@ -1,0 +1,30 @@
+/* Scoped authentication accents; portal layouts and clinical views are unchanged. */
+#auth-portal-page-view{--role:#087f69;--role-soft:#e0f5ed}
+#auth-portal-page-view[data-role=DOCTOR]{--role:#1d5ec5;--role-soft:#e9f1ff}
+#auth-portal-page-view[data-role=HOSPITAL_ADMIN]{--role:#7542ad;--role-soft:#f2eafb}
+#auth-portal-page-view[data-role=PHARMACY]{--role:#a44b06;--role-soft:#fff0dc}
+#auth-portal-page-view .auth-role-card[data-role=PATIENT]{--card:#087f69;--tint:#e0f5ed}
+#auth-portal-page-view .auth-role-card[data-role=DOCTOR]{--card:#1d5ec5;--tint:#e9f1ff}
+#auth-portal-page-view .auth-role-card[data-role=HOSPITAL_ADMIN]{--card:#7542ad;--tint:#f2eafb}
+#auth-portal-page-view .auth-role-card[data-role=PHARMACY]{--card:#a44b06;--tint:#fff0dc}
+#auth-portal-page-view .auth-role-card{border-top:5px solid var(--card)!important;background:var(--tint)!important;color:var(--card);transition:background .15s}
+#auth-portal-page-view .auth-role-card .role-title{color:inherit!important}
+#auth-portal-page-view .auth-role-card.active{background:var(--card)!important;color:white!important;box-shadow:inset 0 -4px #0002!important}
+#auth-portal-page-view .auth-role-card:focus-visible{outline:3px solid var(--card);outline-offset:-4px}
+#auth-portal-page-view .auth-card-wrapper{border-top-color:var(--role)}
+#auth-portal-page-view .auth-submit-btn,#auth-portal-page-view .auth-tab-btn.active{background:var(--role)!important;color:white!important}
+#auth-portal-page-view .auth-mode-tabs{background:var(--role-soft)}
+#auth-portal-page-view .form-control:focus{border-color:var(--role);outline:2px solid var(--role-soft)}
+#qr-scanner{width:min(560px,calc(100% - 28px));max-height:90vh;overflow:auto;border:1px solid #b9cbd4;border-radius:10px;padding:24px;color:#183342}
+#qr-scanner::backdrop{background:#18334288}
+#qr-video{display:block;width:100%;height:240px;background:#12232c;object-fit:contain;border-radius:6px}
+#qr-scanner label{display:block;margin:16px 0;font-size:14px}
+#qr-scanner textarea,#qr-scanner input{display:block;width:100%;margin-top:6px}
+#qr-scanner button,#qr-scanner select{padding:10px;border:1px solid #b9cbd4;border-radius:5px;background:#fff;color:#183342}
+.qr-actions{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}
+#qr-start,#qr-read{background:#176f88!important;color:white!important}
+.qr-download{display:block;width:fit-content;padding:10px 14px;margin:10px 0;border:1px solid #176f88;border-radius:5px;color:#145b70;background:#eaf5f8}
+@media(max-width:700px){.hf-top{height:auto;min-height:66px;flex-wrap:wrap;padding:12px}.hf-top>.hf-toolbar{flex-wrap:wrap;gap:6px}.hf-top .hf-global-search{display:none}#qr-video{height:200px}}
+
+.pin-panel { width: min(620px, 94vw); max-height: 88vh; overflow:auto; border:0; border-radius:14px; padding:24px; }
+.pin-panel label {display:block;margin:12px 0}.pin-panel input,.pin-panel select {display:block;width:100%;padding:10px;box-sizing:border-box}.pin-panel button {margin:5px;padding:8px 14px;cursor:pointer}.pin-request {border-bottom:1px solid #ddd;padding:14px 0}#reg-pin-error,#pin-message {color:#a32626}#auth-register-form input[name=pin],#auth-register-form input[name=confirm_pin]{display:block;width:100%;padding:12px;box-sizing:border-box}

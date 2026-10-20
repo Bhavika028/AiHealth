@@ -12,13 +12,13 @@
     <!-- Leaflet.js Interactive Map CSS -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <link rel="stylesheet" href="/static/style.css?v=20260930_3">
-</head>
+<link rel="stylesheet" href="/static/portal.css?v=20261016-visit1"><link rel="stylesheet" href="/static/qr-tools.css?v=20261016-visit1"></head>
 <body>
 
     <!-- ======================================================================= -->
     <!-- 1. DEDICATED AUTHENTICATION & INFORMATION PORTAL (WHEN LOGGED OUT)       -->
     <!-- ======================================================================= -->
-    <div id="auth-portal-page-view">
+    <div id="auth-portal-page-view" data-role="PATIENT">
         <div class="auth-card-wrapper">
             
             <!-- Auth Header Hero -->
@@ -29,8 +29,8 @@
                     </svg>
                 </div>
                 <div class="auth-hero-title">
-                    <h1>PULSESYNC <span class="auth-ai-pill">AI HEALTHCARE</span></h1>
-                    <p>Select your role, sign in or fill your details to generate your QR pass & launch your dashboard.</p>
+                    <h1>PulseSync <span class="auth-ai-pill">Care portal</span></h1>
+                    <p>Your care, connected. Sign in or create an account.</p>
                 </div>
             </div>
 
@@ -39,31 +39,31 @@
             <div class="auth-roles-grid">
                 
                 <div class="auth-role-card active" data-role="PATIENT" onclick="selectAuthRole('PATIENT')">
-                    <div class="role-card-icon emerald-glow">👤</div>
+                    <div class="role-card-icon emerald-glow"></div>
                     <span class="role-title">User (Patient)</span>
                     <span class="role-desc">Health bio, Dual QR pass & intake form</span>
-                    <div class="role-check-indicator">✓</div>
+                    <div class="role-check-indicator"></div>
                 </div>
 
                 <div class="auth-role-card" data-role="DOCTOR" onclick="selectAuthRole('DOCTOR')">
-                    <div class="role-card-icon azure-glow">🩺</div>
+                    <div class="role-card-icon azure-glow"></div>
                     <span class="role-title">Clinic (Doctor)</span>
                     <span class="role-desc">Doctor QR, intake triage, 3 prescription modes</span>
-                    <div class="role-check-indicator">✓</div>
+                    <div class="role-check-indicator"></div>
                 </div>
 
                 <div class="auth-role-card" data-role="HOSPITAL_ADMIN" onclick="selectAuthRole('HOSPITAL_ADMIN')">
-                    <div class="role-card-icon purple-glow">🏥</div>
+                    <div class="role-card-icon purple-glow"></div>
                     <span class="role-title">Multiservice Hospital</span>
                     <span class="role-desc">Hospital QR, ICU wards, live bed matrix & discharge</span>
-                    <div class="role-check-indicator">✓</div>
+                    <div class="role-check-indicator"></div>
                 </div>
 
                 <div class="auth-role-card" data-role="PHARMACY" onclick="selectAuthRole('PHARMACY')">
-                    <div class="role-card-icon amber-glow">💊</div>
+                    <div class="role-card-icon amber-glow"></div>
                     <span class="role-title">Medical Store</span>
                     <span class="role-desc">Store QR, live e-prescriptions & stock inventory</span>
-                    <div class="role-check-indicator">✓</div>
+                    <div class="role-check-indicator"></div>
                 </div>
 
             </div>
@@ -71,10 +71,10 @@
             <!-- Auth Mode Switcher -->
             <div class="auth-mode-tabs">
                 <button type="button" class="auth-tab-btn active" id="btn-auth-mode-login" onclick="setAuthMode('login')">
-                    <span>🔐 Sign In to Existing Account</span>
+                    <span> Sign in</span>
                 </button>
                 <button type="button" class="auth-tab-btn" id="btn-auth-mode-register" onclick="setAuthMode('register')">
-                    <span>✨ Register New Profile & Generate QR Code</span>
+                    <span> Create account</span>
                 </button>
             </div>
 
@@ -92,7 +92,7 @@
                 </div>
 
                 <button type="submit" class="auth-submit-btn" id="login-submit-button">
-                    <span id="login-submit-text">🔐 Sign In to Dashboard</span>
+                    <span id="login-submit-text"> Sign In to Dashboard</span>
                 </button>
             </form>
 
@@ -130,17 +130,17 @@
                 <!-- Live Location Coordinates Detection for Registration -->
                 <div style="background:#f8fafc; border:1px dashed #cbd5e1; border-radius:12px; padding:0.85rem; margin-top:0.85rem; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem;">
                     <div>
-                        <strong style="font-size:0.85rem; color:#1e293b;">📍 Real-World Geolocation:</strong>
+                        <strong style="font-size:0.85rem; color:#1e293b;"> Real-World Geolocation:</strong>
                         <span id="reg-location-status" style="font-size:0.8rem; color:#64748b; margin-left:0.5rem;">Optional. Detect your coordinates for nearby medical search.</span>
                     </div>
                     <button type="button" class="btn-xs-outline" onclick="detectRegistrationLocation()">
-                        🎯 Detect My Live Coordinates
+                         Detect My Live Coordinates
                     </button>
-                    <input type="hidden" id="reg-lat" value="">
-                    <input type="hidden" id="reg-lng" value="">
+                    <label>Latitude<input type="number" step="any" min="-90" max="90" id="reg-lat" placeholder="Latitude" aria-label="Latitude" value=""></label>
+                    <label>Longitude<input type="number" step="any" min="-180" max="180" id="reg-lng" placeholder="Longitude" aria-label="Longitude" value=""></label><button type="button" class="secondary" onclick="HF.pickLocation()">Choose on map</button><div id="registration-map" style="width:100%;height:240px;display:none"></div>
                 </div>
 
-                <!-- Role 1: PATIENT SPECIFIC FIELDS -->
+                <label>Street address (providers)<input id="reg-provider-address" class="form-control" placeholder="Building, street, locality"></label><!-- Role 1: PATIENT SPECIFIC FIELDS -->
                 <div id="role-fields-patient" class="role-specific-section">
                     <div class="form-section-title">2. Patient Demographics & Identification</div>
                     <div class="form-row-4">
@@ -158,7 +158,7 @@
                         </div>
                         <div class="form-group">
                             <label>Blood Group</label>
-                            <select id="reg-pat-blood" class="form-control">
+                            <select id="reg-pat-blood" class="form-control"><option value="">Unknown / not recorded</option>
                                 <option value="O+">O Positive (O+)</option>
                                 <option value="A+">A Positive (A+)</option>
                                 <option value="B+">B Positive (B+)</option>
@@ -198,12 +198,15 @@
                         </div>
                     </div>
 
-                    <div class="form-section-title">4. Health Insurance Verification</div>
+                    <div class="form-section-title">Current medication (patient reported)</div>
+<label>Do you take any current medicines?<select id="reg-has-meds" onchange="document.getElementById('reg-med-block').hidden=this.value!=='yes'"><option value="no">No</option><option value="yes">Yes</option></select></label>
+<div id="reg-med-block" hidden><label>Number of medicines<input id="reg-med-count" type="number" value="1" min="1" max="50"></label><button type="button" onclick="registrationMedRows()">Generate medicine rows</button><div id="reg-med-rows"></div></div>
+<div class="form-section-title">4. Health Insurance Verification</div>
                     <div style="background:#f0fdfa; border:1.5px solid #99f6e4; border-radius:14px; padding:1.2rem;">
                         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.75rem;">
                             <div>
                                 <strong>Do you have active Health Insurance?</strong>
-                                <p style="font-size:0.78rem; color:#64748b; margin-top:0.2rem;">Enables cashless ICU admission & automated claim QR generation.</p>
+                                <p style="font-size:0.78rem; color:#64748b; margin-top:0.2rem;">Record your policy details for your care team. Coverage is self-reported.</p>
                             </div>
                             <input type="checkbox" id="reg-pat-has-insurance" checked onchange="toggleInsuranceFields(this.checked)" style="width:20px; height:20px; cursor:pointer;">
                         </div>
@@ -227,7 +230,7 @@
                         </div>
 
                         <div id="no-insurance-doc-prompt" style="display:none; font-size:0.82rem; color:#92400e; background:#fef3c7; border-radius:8px; padding:0.6rem; margin-top:0.5rem;">
-                            ℹ️ No insurance indicated. Your Aadhaar and PAN will be linked to PM-JAY Ayushman Bharat / Government Healthcare Subsidies on your Medical Pass QR.
+                            ℹ No insurance indicated. You can add insurance details later. No government eligibility check is performed.
                         </div>
                     </div>
                 </div>
@@ -299,12 +302,12 @@
                         </div>
                         <div class="form-group">
                             <label>Total ICU Beds</label>
-                            <input type="number" id="reg-hosp-icu-beds" class="form-control" placeholder="e.g. 20" value="20" min="1">
+                            <input type="number" id="reg-hosp-icu-beds" class="form-control" placeholder="e.g. 20" value="0" min="0">
                         </div>
                     </div>
 
                     <div class="form-group" style="margin-top:0.85rem;">
-                        <label>Treatment Specialties (Comma separated)</label>
+                        <label for="reg-hosp-general-beds">General beds</label><input type="number" id="reg-hosp-general-beds" class="form-control" value="0" min="0"><label>Treatment Specialties (Comma separated)</label>
                         <input type="text" id="reg-hosp-treatments" class="form-control" placeholder="e.g. Cardiology, Critical Care & Trauma, Neurology, Emergency Surgery">
                     </div>
                 </div>
@@ -335,7 +338,7 @@
 
                 <!-- Register Submit Button -->
                 <button type="submit" class="auth-submit-btn" id="register-submit-button">
-                    <span id="register-submit-text">✨ Register Patient & Generate Medical QR</span>
+                    <span id="register-submit-text"> Register Patient & Generate Medical QR</span>
                 </button>
             </form>
 
@@ -345,917 +348,15 @@
     <!-- ======================================================================= -->
     <!-- 2. MAIN APPLICATION CONTAINER (WHEN LOGGED IN)                          -->
     <!-- ======================================================================= -->
-    <div id="main-app-container" style="display:none;">
-        
-        <!-- Header -->
-        <header class="app-header">
-            <div class="header-container">
-                <div class="brand-group" onclick="switchUserDefaultView()">
-                    <div class="logo-icon-pulse">
-                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                            <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
-                        </svg>
-                    </div>
-                    <div class="brand-title">
-                        <span class="brand-name">PULSESYNC <span class="ai-badge">AI</span></span>
-                        <span class="brand-sub">Digital Health & Emergency QR Network</span>
-                    </div>
-                </div>
-
-                <!-- Navigation Tabs -->
-                <nav class="view-nav-tabs">
-                    <button class="nav-tab active" id="tab-patient" onclick="switchView('patient')">
-                        <span>👤</span> <span data-i18n="nav_patient">Patient</span>
-                    </button>
-                    <button class="nav-tab" id="tab-doctor" onclick="switchView('doctor')">
-                        <span>🩺</span> <span data-i18n="nav_doctor">Doctor Clinic</span>
-                        <span class="tab-badge-pulse" id="doctor-queue-counter">0</span>
-                    </button>
-                    <button class="nav-tab" id="tab-hospital" onclick="switchView('hospital')">
-                        <span>🏥</span> <span data-i18n="nav_hospital">Multiservice Hospital</span>
-                    </button>
-                    <button class="nav-tab" id="tab-pharmacy" onclick="switchView('pharmacy')">
-                        <span>💊</span> <span data-i18n="nav_pharmacy">Medical Store</span>
-                        <span class="tab-alert-badge" id="pharmacy-alert-counter">0</span>
-                    </button>
-                    <button class="nav-tab nav-tab-emergency" id="tab-icu" onclick="switchView('icu')">
-                        <span>🚨</span> <span data-i18n="nav_icu">ICU Transfer</span>
-                    </button>
-                </nav>
-
-                <!-- Actions & Profile Pill -->
-                <div class="header-actions">
-                    <div class="user-profile-badge">
-                        <div class="avatar-circle" id="active-user-avatar-icon">👤</div>
-                        <div class="user-meta">
-                            <span class="user-name" id="current-user-display-name">User</span>
-                            <span class="user-tag" id="current-user-role-display">Role</span>
-                        </div>
-                    </div>
-                    <button type="button" class="btn-switch-account" onclick="logout()" title="Logout / Switch Account">
-                        ⎋ Logout / Switch
-                    </button>
-                </div>
-            </div>
-        </header>
-
-        <!-- Main Content Area -->
-        <main class="main-content-wrapper">
-            
-            <!-- =============================================================== -->
-            <!-- VIEW 1: PATIENT DASHBOARD (DYNAMIC BIO + DUAL QR + GOOGLE FORM)  -->
-            <!-- =============================================================== -->
-            <div id="view-patient" class="view-panel active">
-                
-                <div class="patient-hero-grid">
-                    
-                    <!-- Patient Profile Card -->
-                    <div class="dashboard-card">
-                        <div class="card-header-flex">
-                            <div class="card-title-group">
-                                <span style="font-size:1.4rem;">👤</span>
-                                <div>
-                                    <div class="card-title" id="pat-view-name">Patient Profile</div>
-                                    <div class="card-sub" id="pat-view-blood">Blood Group</div>
-                                </div>
-                            </div>
-                            <span class="badge-status-pill green" id="pat-insurance-badge">● Active</span>
-                        </div>
-
-                        <div style="font-size:0.85rem; line-height:1.7;">
-                            <p><strong>Age / Gender:</strong> <span id="pat-view-age">-</span> yrs, <span id="pat-view-gender">-</span></p>
-                            <p><strong>Contact Phone:</strong> <span id="pat-view-phone">-</span></p>
-                            <p><strong>Email Address:</strong> <span id="pat-view-email">-</span></p>
-                            <p><strong>Location / Address:</strong> <span id="pat-view-location">-</span></p>
-                            <p><strong>Aadhaar Card No:</strong> <span id="pat-view-aadhaar">-</span></p>
-                            <p><strong>PAN Card No:</strong> <span id="pat-view-pan">-</span></p>
-                            <p><strong>Known Allergies:</strong> <span id="pat-view-allergies" style="color:#dc2626; font-weight:700;">None</span></p>
-                            <p><strong>Medical Conditions:</strong> <span id="pat-view-conditions">-</span></p>
-                        </div>
-                    </div>
-
-                    <!-- THE 2 PATIENT QR CODES (SPECIFICATION) -->
-                    <div class="dashboard-card">
-                        <div class="card-header-flex">
-                            <div class="card-title-group">
-                                <span style="font-size:1.4rem;">📱</span>
-                                <div>
-                                    <div class="card-title">Patient QR Network</div>
-                                    <div class="card-sub">2 Real-Time Database QR Passes (Medical Profile & Insurance Claim)</div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="dual-qr-grid">
-                            
-                            <!-- QR 1: Medical Profile QR & Text Card -->
-                            <div class="qr-sub-box">
-                                <div class="qr-sub-header">
-                                    <span class="qr-type-badge indigo">QR 1: Medical Profile</span>
-                                    <div class="qr-tab-nav">
-                                        <button type="button" id="prof-tab-btn-qr" class="qr-tab-nav-btn active" onclick="switchQrCardTab('prof', 'qr')">📷 QR Code</button>
-                                        <button type="button" id="prof-tab-btn-text" class="qr-tab-nav-btn" onclick="switchQrCardTab('prof', 'text')">📄 Text Info</button>
-                                    </div>
-                                </div>
-
-                                <!-- QR View Pane -->
-                                <div id="prof-pane-qr" style="width:100%; display:flex; flex-direction:column; align-items:center;">
-                                    <img id="pat-profile-qr-img" class="qr-dynamic-img" src="" alt="Medical Profile QR" onclick="expandQrModal(this.src, 'Patient Medical Profile QR', this.getAttribute('data-web-url'), this.getAttribute('data-token'))">
-                                    <span class="qr-caption">Scan with any phone camera to view patient details</span>
-                                    <div style="margin-top:10px;">
-                                        <button type="button" class="btn-sm-primary" style="padding:6px 14px; font-size:0.8rem; font-weight:700; cursor:pointer;" onclick="openPatientCard('PROFILE_INTAKE')">
-                                            🌐 Open Card
-                                        </button>
-                                    </div>
-                                </div>
-
-                                <!-- Text Details Pane -->
-                                <div id="prof-pane-text" style="width:100%; display:none;">
-                                    <div id="prof-raw-text" class="qr-text-card">
-                                        Loading patient medical details...
-                                    </div>
-                                    <div style="display:flex; justify-content:center; gap:8px;">
-                                        <button type="button" class="btn-sm-secondary" style="padding:5px 12px; font-size:0.75rem;" onclick="copyQrTextDetails('prof')">
-                                            📋 Copy Text
-                                        </button>
-                                        <button type="button" class="btn-sm-primary" style="padding:5px 12px; font-size:0.75rem;" onclick="openPatientCard('PROFILE_INTAKE')">
-                                            🌐 Open Card
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <!-- QR 2: Insurance Claim / Medical Pass QR & Text Card -->
-                            <div class="qr-sub-box">
-                                <div class="qr-sub-header">
-                                    <span class="qr-type-badge teal">QR 2: Insurance Pass</span>
-                                    <div class="qr-tab-nav">
-                                        <button type="button" id="ins-tab-btn-qr" class="qr-tab-nav-btn active" onclick="switchQrCardTab('ins', 'qr')">📷 QR Code</button>
-                                        <button type="button" id="ins-tab-btn-text" class="qr-tab-nav-btn" onclick="switchQrCardTab('ins', 'text')">📄 Text Info</button>
-                                    </div>
-                                </div>
-
-                                <!-- QR View Pane -->
-                                <div id="ins-pane-qr" style="width:100%; display:flex; flex-direction:column; align-items:center;">
-                                    <img id="pat-insurance-qr-img" class="qr-dynamic-img" src="" alt="Insurance Claim QR" onclick="expandQrModal(this.src, 'Patient Insurance & Medical Pass QR', this.getAttribute('data-web-url'), this.getAttribute('data-token'))">
-                                    <div class="insurance-mini-meta" style="margin-top:6px;">
-                                        <span class="ins-status-tag" id="pat-ins-claim-tag">Insurance Claimed: NO</span>
-                                        <div style="font-size:0.75rem; color:#475569;" id="pat-ins-policy-display">Policy: SH-MED-992140</div>
-                                    </div>
-                                    <div style="margin-top:8px;">
-                                        <button type="button" class="btn-sm-primary" style="padding:6px 14px; font-size:0.8rem; font-weight:700; background:#0d9488; cursor:pointer;" onclick="openPatientCard('INSURANCE_CLAIM')">
-                                            🛡️ Open Pass
-                                        </button>
-                                    </div>
-                                </div>
-
-                                <!-- Text Details Pane -->
-                                <div id="ins-pane-text" style="width:100%; display:none;">
-                                    <div id="ins-raw-text" class="qr-text-card">
-                                        Loading insurance pass details...
-                                    </div>
-                                    <div style="display:flex; justify-content:center; gap:8px;">
-                                        <button type="button" class="btn-sm-secondary" style="padding:5px 12px; font-size:0.75rem;" onclick="copyQrTextDetails('ins')">
-                                            📋 Copy Text
-                                        </button>
-                                        <button type="button" class="btn-sm-primary" style="padding:5px 12px; font-size:0.75rem; background:#0d9488;" onclick="openPatientCard('INSURANCE_CLAIM')">
-                                            🛡️ Open Pass
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-
-                        </div>
-                    </div>
-
-                </div>
-
-                <!-- Google Form Style Intake Questionnaire -->
-                <div class="dashboard-card">
-                    <div class="card-header-flex">
-                        <div class="card-title-group">
-                            <span style="font-size:1.4rem;">📋</span>
-                            <div>
-                                <div class="card-title">Patient Intake & Symptom Questionnaire</div>
-                                <div class="card-sub">Adaptive branching triage with Multilingual Voice / NLP Symptom Parser</div>
-                            </div>
-                        </div>
-                        <button type="button" class="btn-sm-primary" onclick="toggleVoiceRecording()" id="btn-voice-input">
-                            🎙️ <span id="voice-btn-text">Speak (Marathi / Hindi / English)</span>
-                        </button>
-                    </div>
-
-                    <form id="patient-intake-form" onsubmit="handleIntakeSubmit(event)">
-                        
-                        <!-- Section A: Chief Complaint Chips -->
-                        <div style="margin-bottom:1.25rem;">
-                            <label class="font-bold" style="display:block; margin-bottom:0.5rem; font-size:0.88rem;">Select Chief Complaint / Symptom:</label>
-                            <div class="complaints-chips-grid">
-                                <div class="complaint-chip active" onclick="selectComplaint('Blood Pressure')">❤️ Blood Pressure (BP)</div>
-                                <div class="complaint-chip" onclick="selectComplaint('Fever')">🌡️ Fever & Chills</div>
-                                <div class="complaint-chip" onclick="selectComplaint('Chest Pain')">⚡ Chest Pain</div>
-                                <div class="complaint-chip" onclick="selectComplaint('Breathing Issue')">🫁 Breathing Issue / Dyspnea</div>
-                                <div class="complaint-chip" onclick="selectComplaint('Diabetes')">🩸 High Sugar / Diabetes</div>
-                                <div class="complaint-chip" onclick="selectComplaint('Headache')">🧠 Severe Headache / Migraine</div>
-                            </div>
-                            <input type="hidden" id="intake-q1-complaint" value="Blood Pressure">
-                        </div>
-
-                        <!-- Duration & Severity -->
-                        <div class="form-row-4">
-                            <div class="form-group">
-                                <label>Duration Value</label>
-                                <input type="number" id="intake-q2-val" class="form-control" value="2" min="1">
-                            </div>
-                            <div class="form-group">
-                                <label>Duration Unit</label>
-                                <select id="intake-q2-unit" class="form-control">
-                                    <option value="Hours">Hours</option>
-                                    <option value="Days" selected>Days</option>
-                                    <option value="Weeks">Weeks</option>
-                                </select>
-                            </div>
-                            <div class="form-group">
-                                <label>Severity Level</label>
-                                <select id="intake-q3-severity" class="form-control">
-                                    <option value="Mild">Mild (Tolerable)</option>
-                                    <option value="Moderate" selected>Moderate</option>
-                                    <option value="Severe">Severe (Critical)</option>
-                                </select>
-                            </div>
-                            <div class="form-group">
-                                <label>First Time Having This?</label>
-                                <select id="intake-q4-first-visit" class="form-control">
-                                    <option value="true">Yes, First Episode</option>
-                                    <option value="false">No, Recurring Condition</option>
-                                </select>
-                            </div>
-                        </div>
-
-                        <!-- Medication Taken -->
-                        <div class="form-row-2" style="margin-top:1rem;">
-                            <div class="form-group">
-                                <label>Have you taken any medicine for this?</label>
-                                <select id="intake-q5-taken" class="form-control">
-                                    <option value="false">No</option>
-                                    <option value="true">Yes</option>
-                                </select>
-                            </div>
-                            <div class="form-group">
-                                <label>If yes, medicine name & dosage</label>
-                                <input type="text" id="intake-q5-details" class="form-control" placeholder="e.g. Paracetamol 650mg">
-                            </div>
-                        </div>
-
-                        <!-- Vitals -->
-                        <div class="form-section-title">Current Vital Signs</div>
-                        <div class="form-row-4">
-                            <div class="form-group">
-                                <label>Blood Pressure (BP)</label>
-                                <input type="text" id="intake-vital-bp" class="form-control" placeholder="120/80 mmHg" value="150/95 mmHg">
-                            </div>
-                            <div class="form-group">
-                                <label>Pulse Rate (bpm)</label>
-                                <input type="number" id="intake-vital-pulse" class="form-control" placeholder="75" value="88">
-                            </div>
-                            <div class="form-group">
-                                <label>Body Temp (°F)</label>
-                                <input type="text" id="intake-vital-temp" class="form-control" placeholder="98.6 °F" value="98.6 °F">
-                            </div>
-                            <div class="form-group">
-                                <label>SpO2 Blood Oxygen (%)</label>
-                                <input type="number" id="intake-vital-spo2" class="form-control" placeholder="98" value="98">
-                            </div>
-                        </div>
-
-                        <!-- Dynamic Branch Container -->
-                        <div id="branch-questions-container" style="margin-top:1.25rem;">
-                            <div class="form-section-title" id="branch-title">Section B: Adaptive Questions</div>
-                            <div id="branch-questions-list"></div>
-                        </div>
-
-                        <!-- Warning Symptoms Checklist -->
-                        <div style="background:#fef2f2; border:1.5px solid #fecdd3; border-radius:14px; padding:1rem; margin-top:1.25rem;">
-                            <strong style="color:#991b1b; display:block; margin-bottom:0.5rem;">⚠️ Emergency Warning Signs Checklist:</strong>
-                            <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:0.5rem; font-size:0.85rem;">
-                                <label><input type="checkbox" name="warning_sign" value="chest_pain"> Chest Heaviness / Pain</label>
-                                <label><input type="checkbox" name="warning_sign" value="shortness_of_breath"> Severe Shortness of Breath</label>
-                                <label><input type="checkbox" name="warning_sign" value="severe_weakness"> Acute Dizziness / Weakness</label>
-                            </div>
-                        </div>
-
-                        <button type="submit" class="auth-submit-btn" style="margin-top:1.5rem;">
-                            🚀 Submit Intake & Dispatch Preliminary Note to Doctor
-                        </button>
-                    </form>
-                </div>
-
-                <!-- Ola-Style Interactive Medical Stores Map & Live Locator -->
-                <div class="dashboard-card" style="padding:0; overflow:hidden;">
-                    
-                    <!-- Map Header & Real-World Search Bar -->
-                    <div style="padding:1.25rem 1.5rem; background:linear-gradient(135deg, #0f172a 0%, #1e293b 100%); color:#ffffff; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:1rem;">
-                        <div class="card-title-group">
-                            <span style="font-size:1.6rem;">🗺️</span>
-                            <div>
-                                <div class="card-title" style="color:#ffffff; font-size:1.15rem;">Live Nearby Chemists & Hospitals Radar</div>
-                                <div class="card-sub" style="color:#94a3b8;" id="map-status-sub">Detecting live GPS coordinates & querying real hospitals and chemists from OpenStreetMap...</div>
-                            </div>
-                        </div>
-                        <div style="display:flex; gap:0.75rem; align-items:center; flex-wrap:wrap;">
-                            <button type="button" class="btn-gps-locate" onclick="requestUserLiveLocation()">
-                                📍 Locate My Live GPS
-                            </button>
-                            <input type="text" id="pharmacy-map-search-input" class="form-control map-search-box" placeholder="🔍 Search hospital, chemist or location..." oninput="handleMapSearchInput(this.value)">
-                        </div>
-                    </div>
-
-                    <!-- Interactive Leaflet Map Canvas -->
-                    <div class="ola-map-wrapper">
-                        <div id="medical-stores-leaflet-map" style="width:100%; height:420px; z-index:1;"></div>
-                        
-                        <!-- Floating Map Controls Overlay -->
-                        <div class="map-floating-overlay">
-                            <div class="map-live-tag">
-                                <span class="radar-dot-pulse"></span>
-                                <span id="map-live-status-pill">GPS Live Ready</span>
-                            </div>
-                            <div class="map-radius-badge" id="map-radius-display">Radius: 5.0 km</div>
-                        </div>
-                    </div>
-
-                    <!-- Bottom Real-Time Stores Drawer & Grid -->
-                    <div style="padding:1.25rem 1.5rem; background:#f8fafc; border-top:1px solid #e2e8f0;">
-                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem; flex-wrap:wrap; gap:0.5rem;">
-                            <div style="font-size:0.9rem; font-weight:700; color:#1e293b;">
-                                Real Facilities Around You: <span id="stores-count-badge" class="badge-status-pill green">0 Medical Facilities</span>
-                            </div>
-                            <div style="display:flex; gap:0.4rem; flex-wrap:wrap;">
-                                <button type="button" class="btn-filter-pill active" id="btn-filter-all" onclick="filterMapStoresMode('all')">🌐 All Facilities</button>
-                                <button type="button" class="btn-filter-pill" id="btn-filter-pharmacy" onclick="filterMapStoresMode('pharmacy')">💊 Chemists / Pharmacies</button>
-                                <button type="button" class="btn-filter-pill" id="btn-filter-hospital" onclick="filterMapStoresMode('hospital')">🏥 Real Hospitals</button>
-                                <button type="button" class="btn-filter-pill" id="btn-filter-online" onclick="filterMapStoresMode('registered')">🟢 Registered Stores</button>
-                            </div>
-                        </div>
-
-                        <!-- Pharmacy Listing Cards Grid -->
-                        <div class="pharmacies-grid" id="nearby-pharmacies-grid">
-                            <div style="grid-column:1/-1; text-align:center; padding:2rem; color:#64748b;">
-                                📍 Click <strong>"Locate My Live GPS"</strong> above or search a locality to discover real medical shops nearby in real time.
-                            </div>
-                        </div>
-                    </div>
-
-                </div>
-
-            </div>
-
-            <!-- =============================================================== -->
-            <!-- VIEW 2: DOCTOR CLINIC DASHBOARD (QUEUE + NOTES + 3 RX MODES)     -->
-            <!-- =============================================================== -->
-            <div id="view-doctor" class="view-panel">
-                
-                <!-- Doctor Profile Hero Card -->
-                <div class="dashboard-card">
-                    <div class="card-header-flex">
-                        <div class="card-title-group">
-                            <span style="font-size:1.4rem;">🩺</span>
-                            <div>
-                                <div class="card-title" id="doc-view-name">Doctor Profile</div>
-                                <div class="card-sub" id="doc-view-spec">Cardiology & Internal Medicine</div>
-                            </div>
-                        </div>
-                        <div style="display:flex; align-items:center; gap:1.25rem;">
-                            <div style="text-align:right;">
-                                <div style="font-size:1.4rem; font-weight:900; color:#0f766e;" id="doc-checked-counter">0</div>
-                                <div style="font-size:0.75rem; color:#64748b;">Patients Checked Today</div>
-                            </div>
-                            <img id="doc-official-qr-img" class="qr-dynamic-img-sm" src="" alt="Doctor QR" onclick="expandQrModal(this.src, 'Doctor Clinic Official QR')">
-                        </div>
-                    </div>
-
-                    <div style="font-size:0.85rem; display:flex; gap:2rem; flex-wrap:wrap; border-top:1px solid #e2e8f0; padding-top:0.75rem;">
-                        <p><span id="doc-view-edu">🎓 MBBS, MD</span></p>
-                        <p><strong>License No:</strong> <span id="doc-view-license">MCI-DEL</span></p>
-                        <p><strong>Clinic:</strong> <span id="doc-view-clinic">Metro Wellness Clinic</span></p>
-                    </div>
-                </div>
-
-                <div class="clinical-workspace-grid">
-                    
-                    <!-- Patient Consultation Queue -->
-                    <div class="dashboard-card">
-                        <div class="card-header-flex">
-                            <div class="card-title-group">
-                                <span>👥</span>
-                                <div class="card-title">Live Patient Queue</div>
-                            </div>
-                            <span class="badge-status-pill green" id="queue-count-display">0 Patients</span>
-                        </div>
-                        <div id="doctor-patient-queue-list"></div>
-                    </div>
-
-                    <!-- Clinical Consultation Workspace -->
-                    <div class="dashboard-card">
-                        <div class="card-header-flex">
-                            <div class="card-title-group">
-                                <span>✍️</span>
-                                <div>
-                                    <div class="card-title">Active Review: <span id="active-consult-pat-name">No Patient Selected</span></div>
-                                    <div class="card-sub">Chief Complaint: <span id="active-consult-complaint">-</span></div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- AI Synthesized Summary -->
-                        <div style="background:#f0fdfa; border:1px solid #99f6e4; border-radius:12px; padding:1rem; margin-bottom:1.25rem;">
-                            <strong style="color:#0f766e; font-size:0.85rem;">🤖 AI Preliminary Clinical Note:</strong>
-                            <p id="ai-summary-text-display" style="font-size:0.85rem; color:#1e293b; margin-top:0.35rem; line-height:1.5;">
-                                Select an incoming patient from the live queue to review AI intake analysis and vitals.
-                            </p>
-                        </div>
-
-                        <!-- THE 3 DOCTOR PRESCRIPTION OUTPUT MODES (HANDWRITTEN NOTE) -->
-                        <div class="form-section-title">Prescription Actions (The 3 Doctor Output Modes)</div>
-                        <div class="rx-output-mode-tabs">
-                            <button type="button" class="rx-mode-tab active" onclick="switchRxMode('increase')">
-                                1. 📈 Increase Dose
-                            </button>
-                            <button type="button" class="rx-mode-tab" onclick="switchRxMode('new_meds')">
-                                2. 💊 New Medicines
-                            </button>
-                            <button type="button" class="rx-mode-tab" onclick="switchRxMode('referral')">
-                                3. 🚨 Consult Another Doctor
-                            </button>
-                        </div>
-
-                        <!-- OUTPUT 1: INCREASE DOSE -->
-                        <div id="rx-mode-increase" class="rx-mode-panel">
-                            <div class="form-row-3">
-                                <div class="form-group">
-                                    <label>Medicine Name</label>
-                                    <input type="text" id="rx-dose-med-name" class="form-control" placeholder="e.g. Telmisartan 40mg">
-                                </div>
-                                <div class="form-group">
-                                    <label>Times Per Day</label>
-                                    <input type="number" id="rx-dose-times" class="form-control" value="2" min="1" max="4">
-                                </div>
-                                <div class="form-group">
-                                    <label>Meal Relation</label>
-                                    <select id="rx-dose-meal" class="form-control">
-                                        <option value="after_eating" selected>After Eating (Meal)</option>
-                                        <option value="before_eating">Before Eating</option>
-                                    </select>
-                                </div>
-                            </div>
-                            <div style="margin-top:0.75rem; display:flex; gap:1rem; font-size:0.85rem;">
-                                <label><input type="checkbox" id="rx-time-morn" checked> Morning</label>
-                                <label><input type="checkbox" id="rx-time-aft"> Afternoon</label>
-                                <label><input type="checkbox" id="rx-time-night" checked> Night</label>
-                            </div>
-                            <button type="button" class="btn-sm-primary" style="margin-top:1rem;" onclick="submitIncreaseDoseRx()">
-                                💾 Save & Transmit Increased Dose
-                            </button>
-                        </div>
-
-                        <!-- OUTPUT 2: NEW MEDICINES -->
-                        <div id="rx-mode-new_meds" class="rx-mode-panel" style="display:none;">
-                            <div id="new-meds-input-container">
-                                <div class="new-med-row">
-                                    <input type="text" class="form-control" placeholder="Medicine: e.g. Amlodipine 10mg">
-                                    <input type="number" class="form-control" placeholder="Dose/day" value="1" style="width:100px;">
-                                    <select class="form-control" style="width:140px;">
-                                        <option value="after_eating">After Meal</option>
-                                        <option value="before_eating">Before Meal</option>
-                                    </select>
-                                </div>
-                            </div>
-                            <div style="margin-top:0.75rem; display:flex; gap:0.5rem;">
-                                <button type="button" class="btn-xs-outline" onclick="addNewMedRow()">+ Add Another Medicine</button>
-                                <button type="button" class="btn-sm-primary" onclick="submitNewMedsRx()">🚀 Send New Medicines to Pharmacy</button>
-                            </div>
-                        </div>
-
-                        <!-- OUTPUT 3: CONSULT ANOTHER DOCTOR & EMERGENCY TRANSFER -->
-                        <div id="rx-mode-referral" class="rx-mode-panel" style="display:none;">
-                            <div class="emergency-referral-box">
-                                <div class="referral-box-header">
-                                    <span class="emergency-tag-pill">🚨 HIGH EMERGENCY REFERRAL</span>
-                                    <span style="font-size:0.82rem; font-weight:700; color:#991b1b;">Immediate ICU Transfer Authorization</span>
-                                </div>
-                                <p style="font-size:0.8rem; color:#475569; margin-bottom:0.75rem;">
-                                    Automatically transmits full medical notes to target multiservice hospital and generates a 6-digit confirmation PIN.
-                                </p>
-                                <div class="form-row-2">
-                                    <div class="form-group">
-                                        <label>Target Multiservice Hospital</label>
-                                        <select id="doc-ref-hospital" class="form-control">
-                                            <option value="Emergency Hospital Facility">Emergency Hospital Facility</option>
-                                            <option value="Multiservice Care Center">Multiservice Care Center</option>
-                                        </select>
-                                    </div>
-                                    <div class="form-group">
-                                        <label>Target Specialist Doctor</label>
-                                        <select id="doc-ref-doctor" class="form-control">
-                                            <option value="Chief Intensivist (Critical Care)">Chief Intensivist (Critical Care)</option>
-                                            <option value="Consultant Cardiologist">Consultant Cardiologist</option>
-                                        </select>
-                                    </div>
-                                </div>
-                                <div style="display:flex; justify-content:space-between; align-items:center; margin-top:1rem;">
-                                    <div class="pin-display-group">
-                                        <strong>Generated 6-Digit PIN:</strong> <span class="pin-highlight" id="doc-generated-pin">------</span>
-                                    </div>
-                                    <button type="button" class="btn-emergency-action" onclick="dispatchEmergencyReferral()">
-                                        ⚡ Dispatch Emergency Transfer Pass
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- GIVE A DATE TO PATIENTS (FOLLOW-UP SCHEDULER) -->
-                        <div class="form-section-title" style="margin-top:1.5rem;">📅 Give a Date to Patients (Follow-Up Scheduler)</div>
-                        <div class="form-row-3">
-                            <div class="form-group">
-                                <label>Follow-Up Date</label>
-                                <input type="date" id="doc-sched-date" class="form-control" value="2026-08-30">
-                            </div>
-                            <div class="form-group">
-                                <label>Preferred Time Slot</label>
-                                <input type="time" id="doc-sched-time" class="form-control" value="11:00">
-                            </div>
-                            <div class="form-group" style="justify-content:flex-end;">
-                                <button type="button" class="btn-sm-primary" onclick="schedulePatientDate()" style="height:42px;">
-                                    🗓️ Schedule Follow-Up
-                                </button>
-                            </div>
-                        </div>
-
-                    </div>
-
-                </div>
-
-            </div>
-
-            <!-- =============================================================== -->
-            <!-- VIEW 3: MULTISERVICE HOSPITAL (WARDS, BEDS & DISCHARGE)          -->
-            <!-- =============================================================== -->
-            <div id="view-hospital" class="view-panel">
-                
-                <!-- Hospital Header Card -->
-                <div class="dashboard-card">
-                    <div class="card-header-flex">
-                        <div class="card-title-group">
-                            <span style="font-size:1.4rem;">🏥</span>
-                            <div>
-                                <div class="card-title" id="hosp-view-name">Hospital Name</div>
-                                <div class="card-sub" id="hosp-view-location">Hospital Address</div>
-                            </div>
-                        </div>
-                        <div style="display:flex; align-items:center; gap:1.25rem;">
-                            <div style="text-align:right;">
-                                <p style="font-size:0.85rem;"><strong>Emergency 24x7:</strong> <span id="hosp-view-phone">+91-11-2894000</span></p>
-                                <p style="font-size:0.78rem; color:#64748b;">Cert: <span id="hosp-view-reg">CGH-DEL-1092</span></p>
-                            </div>
-                            <img id="hosp-official-qr-img" class="qr-dynamic-img-sm" src="" alt="Hospital QR" onclick="expandQrModal(this.src, 'Hospital Official QR')">
-                        </div>
-                    </div>
-
-                    <div class="hosp-stats-row">
-                        <div class="metric-counter-box">
-                            <span class="metric-val" id="hosp-docs-counter">24</span>
-                            <span class="metric-lbl">Total Doctors</span>
-                        </div>
-                        <div class="metric-counter-box">
-                            <span class="metric-val" id="hosp-wards-counter">5</span>
-                            <span class="metric-lbl">Wards & ICUs</span>
-                        </div>
-                        <div class="metric-counter-box">
-                            <span class="metric-val" id="hosp-beds-occ" style="color:#ef4444;">12</span>
-                            <span class="metric-lbl">Occupied Beds</span>
-                        </div>
-                        <div class="metric-counter-box">
-                            <span class="metric-val" id="hosp-beds-avail" style="color:#10b981;">18</span>
-                            <span class="metric-lbl">Available Beds</span>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Live Ward & Bed Tracker Grid -->
-                <div class="dashboard-card">
-                    <div class="card-header-flex">
-                        <div class="card-title-group">
-                            <span>🛏️</span>
-                            <div class="card-title">Live Ward & Bed Availability Matrix</div>
-                        </div>
-                    </div>
-                    <div class="beds-matrix-grid" id="hospital-beds-matrix-grid"></div>
-                </div>
-
-                <!-- Ward Allocation & Discharge Schedulers -->
-                <div class="form-row-2">
-                    
-                    <!-- Allocate Ward -->
-                    <div class="dashboard-card">
-                        <div class="card-title-group" style="margin-bottom:1rem;">
-                            <span>📥</span>
-                            <div class="card-title">Allocate Ward & Bed to Incoming Transfer</div>
-                        </div>
-                        <div class="form-group" style="margin-bottom:0.75rem;">
-                            <label>Patient</label>
-                            <input type="text" id="alloc-patient-id" class="form-control" placeholder="Enter Patient ID / Name">
-                        </div>
-                        <div class="form-row-2">
-                            <div class="form-group">
-                                <label>Select Ward</label>
-                                <select id="alloc-ward-select" class="form-control">
-                                    <option value="Cardiac ICU Ward A">Cardiac ICU Ward A</option>
-                                    <option value="Emergency Trauma Ward">Emergency Trauma Ward</option>
-                                    <option value="General Ward 2">General Ward 2</option>
-                                </select>
-                            </div>
-                            <div class="form-group">
-                                <label>Bed Number</label>
-                                <input type="text" id="alloc-bed-num" class="form-control" placeholder="e.g. Bed-01">
-                            </div>
-                        </div>
-                        <div class="form-group" style="margin-top:0.75rem;">
-                            <label>Assigned Specialist Doctor</label>
-                            <input type="text" id="alloc-specialist" class="form-control" placeholder="Specialist Doctor Name">
-                        </div>
-                        <button type="button" class="btn-sm-primary" style="margin-top:1rem; width:100%;" onclick="allocatePatientWardAction()">
-                            🛏️ Confirm Ward & Bed Allocation
-                        </button>
-                    </div>
-
-                    <!-- Discharge Scheduler -->
-                    <div class="dashboard-card">
-                        <div class="card-title-group" style="margin-bottom:1rem;">
-                            <span>📤</span>
-                            <div class="card-title">Discharge Scheduler & Bed Release</div>
-                        </div>
-                        <div class="form-group" style="margin-bottom:0.75rem;">
-                            <label>Select Bed to Free</label>
-                            <select id="discharge-bed-select" class="form-control">
-                                <option value="">Select Bed</option>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label>Discharge Clinical Summary</label>
-                            <textarea id="discharge-summary-text" class="form-control" rows="3" placeholder="Enter discharge advice, follow-up date and stabilized vitals..."></textarea>
-                        </div>
-                        <button type="button" class="btn-sm-primary" style="margin-top:1rem; width:100%; background:#059669;" onclick="dischargePatientAction()">
-                            📋 Finalize Discharge & Release Bed
-                        </button>
-                    </div>
-
-                </div>
-
-            </div>
-
-            <!-- =============================================================== -->
-            <!-- VIEW 4: PHARMACY / MEDICAL STORE (E-RX, INVENTORY & DISPENSE)    -->
-            <!-- =============================================================== -->
-            <div id="view-pharmacy" class="view-panel">
-                
-                <!-- Store Profile Header Card -->
-                <div class="dashboard-card">
-                    <div class="card-header-flex">
-                        <div class="card-title-group">
-                            <span style="font-size:1.4rem;">💊</span>
-                            <div>
-                                <div class="card-title" id="pharm-view-name">Pharmacy Name</div>
-                                <div class="card-sub" id="pharm-view-address">Pharmacy Address</div>
-                            </div>
-                        </div>
-                        <div style="display:flex; align-items:center; gap:1.25rem;">
-                            <div style="text-align:right;">
-                                <p style="font-size:0.85rem;"><strong>Pharmacist:</strong> <span id="pharm-view-pharmacist">Karan Sharma</span></p>
-                                <p style="font-size:0.78rem; color:#64748b;">Drug License: <span id="pharm-view-license">DL-20B-DEL</span></p>
-                            </div>
-                            <img id="pharm-official-qr-img" class="qr-dynamic-img-sm" src="" alt="Pharmacy QR" onclick="expandQrModal(this.src, 'Pharmacy Official QR')">
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Live E-Prescription Queue -->
-                <div class="dashboard-card">
-                    <div class="card-header-flex">
-                        <div class="card-title-group">
-                            <span>📥</span>
-                            <div class="card-title">Live Incoming Prescriptions (1-Click Dispense)</div>
-                        </div>
-                        <span class="badge-status-pill green" id="pending-rx-count">0 Pending</span>
-                    </div>
-                    <div id="pharmacy-rx-queue-container" style="display:grid; grid-template-columns:repeat(2, 1fr); gap:1rem;"></div>
-                </div>
-
-                <!-- Real-Time Stock Inventory & Alerts -->
-                <div class="dashboard-card">
-                    <div class="card-header-flex">
-                        <div class="card-title-group">
-                            <span>📦</span>
-                            <div>
-                                <div class="card-title">Live Stock Inventory & Finish Alerts</div>
-                                <div class="card-sub">Automatic stock deduction upon dispense</div>
-                            </div>
-                        </div>
-                        <button type="button" class="btn-sm-primary" onclick="openRestockModal('inv_med_05', 'Azithromycin 500mg')">+ Restock Item</button>
-                    </div>
-
-                    <div id="low-stock-alerts-banner" style="margin-bottom:0.75rem;"></div>
-
-                    <table class="pharmacy-table">
-                        <thead>
-                            <tr>
-                                <th>Medicine & Strength</th>
-                                <th>Category</th>
-                                <th>Stock Qty</th>
-                                <th>Low Threshold</th>
-                                <th>Status</th>
-                                <th>Action</th>
-                            </tr>
-                        </thead>
-                        <tbody id="pharmacy-inventory-tbody"></tbody>
-                    </table>
-                </div>
-
-                <!-- Dispense Audit Logs -->
-                <div class="dashboard-card">
-                    <div class="card-title-group" style="margin-bottom:1rem;">
-                        <span>📋</span>
-                        <div class="card-title">Prescription Dispense Audit Logs</div>
-                    </div>
-                    <table class="pharmacy-table">
-                        <thead>
-                            <tr>
-                                <th>Log ID</th>
-                                <th>Patient Name</th>
-                                <th>Prescribed By</th>
-                                <th>Medicines Provided</th>
-                                <th>Dispensed At</th>
-                                <th>Pharmacist</th>
-                                <th>Status</th>
-                            </tr>
-                        </thead>
-                        <tbody id="dispense-logs-tbody"></tbody>
-                    </table>
-                </div>
-
-            </div>
-
-            <!-- =============================================================== -->
-            <!-- VIEW 5: EMERGENCY ICU TRANSFER & 6-DIGIT PIN VERIFICATION        -->
-            <!-- =============================================================== -->
-            <div id="view-icu" class="view-panel">
-                <div class="dashboard-card" style="max-width:680px; margin:0 auto; text-align:center;">
-                    <span style="font-size:2.5rem;">🚨</span>
-                    <h2 style="font-family:var(--font-heading); color:#dc2626; margin:0.5rem 0;">Emergency ICU Transfer & PIN Authorization</h2>
-                    <p style="font-size:0.88rem; color:#64748b; margin-bottom:1.5rem;">
-                        High-emergency transfer authorization generated by referring doctor. Enter the 6-digit confirmation PIN below.
-                    </p>
-
-                    <img id="icu-transfer-qr-img" class="qr-dynamic-img" style="width:180px; height:180px; margin:0 auto 1.5rem;" src="" alt="ICU Transfer QR">
-
-                    <div style="display:flex; justify-content:center; gap:0.6rem; margin-bottom:1.5rem;">
-                        <input type="text" maxlength="1" class="pin-box" value="5">
-                        <input type="text" maxlength="1" class="pin-box" value="8">
-                        <input type="text" maxlength="1" class="pin-box" value="4">
-                        <input type="text" maxlength="1" class="pin-box" value="9">
-                        <input type="text" maxlength="1" class="pin-box" value="2">
-                        <input type="text" maxlength="1" class="pin-box" value="0">
-                    </div>
-
-                    <button type="button" class="btn-emergency-action" style="width:100%;" onclick="submitIcuPinVerification()">
-                        🔐 Verify PIN & Authorize Immediate ICU Admission
-                    </button>
-
-                    <div id="icu-verification-result" style="display:none; margin-top:1.25rem; padding:1rem; border-radius:12px;"></div>
-                </div>
-            </div>
-
-        </main>
-    </div>
-
-    <!-- ======================================================================= -->
-    <!-- 3. MODALS & TOAST NOTIFICATION UTILITIES                                -->
-    <!-- ======================================================================= -->
-    
-    <!-- QR Fullscreen Modal -->
-    <div id="qr-expand-modal" class="modal-backdrop">
-        <div class="modal-content" style="text-align:center; max-width:440px;">
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">
-                <h3 id="qr-modal-title" style="font-family:var(--font-heading); font-size:1.15rem; color:#0f172a;">QR Code</h3>
-                <button type="button" class="btn-close-modal" onclick="closeQrModal()">✕</button>
-            </div>
-            <img id="qr-expanded-img" src="" alt="Expanded QR" style="width:240px; height:240px; border-radius:16px; margin:0 auto; box-shadow:0 8px 25px rgba(0,0,0,0.15);">
-            <p style="font-size:0.82rem; color:#64748b; margin-top:0.75rem;">Scan with any phone camera to view complete patient details.</p>
-            
-            <div style="margin-top:1rem; display:flex; gap:8px; justify-content:center; flex-wrap:wrap;">
-                <a id="qr-modal-open-link" href="#" target="_blank" class="btn-sm-primary" style="text-decoration:none; display:inline-flex; align-items:center; gap:6px; padding:8px 16px;">
-                    🌐 Open Patient Web Card
-                </a>
-                <button type="button" class="btn-sm-secondary" style="padding:8px 14px;" onclick="copyQrLinkFromModal()">
-                    📋 Copy Link
-                </button>
-            </div>
-            
-            <div id="qr-modal-link-display" style="margin-top:0.75rem; padding:8px 12px; background:#f1f5f9; border-radius:8px; font-size:0.75rem; color:#475569; word-break:break-all; font-family:monospace;">
-            </div>
-        </div>
-    </div>
-
-    <!-- Restock Modal -->
-    <div id="restock-modal" class="modal-backdrop">
-        <div class="modal-content">
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">
-                <h3 style="font-family:var(--font-heading); font-size:1.15rem;">Restock Pharmacy Inventory</h3>
-                <button type="button" class="btn-close-modal" onclick="closeRestockModal()">✕</button>
-            </div>
-            <div class="form-group" style="margin-bottom:0.75rem;">
-                <label>Medicine</label>
-                <select id="restock-item-select" class="form-control"></select>
-            </div>
-            <div class="form-group">
-                <label>Quantity to Add (Units)</label>
-                <input type="number" id="restock-qty-input" class="form-control" value="50" min="10">
-            </div>
-            <button type="button" class="btn-sm-primary" style="width:100%; margin-top:1.25rem;" onclick="submitRestockAction()">
-                📥 Confirm Restock & Update Stock
-            </button>
-        </div>
-    </div>
-
-    <!-- Toast Notification -->
-    <div id="toast-banner" class="toast-banner">
-        <span id="toast-msg">Notification</span>
-    </div>
-
-    <!-- Leaflet.js Interactive Map Script -->
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <script src="/static/app.js?v=20260930_3"></script>
-    <script>
-    // Robust Global Handlers for QR Card Tabs and Open Card
-    window.switchQrCardTab = function(cardKey, tabKey) {
-        var qrPane = document.getElementById(cardKey + '-pane-qr');
-        var textPane = document.getElementById(cardKey + '-pane-text');
-        var btnQr = document.getElementById(cardKey + '-tab-btn-qr');
-        var btnText = document.getElementById(cardKey + '-tab-btn-text');
-
-        if (qrPane && textPane) {
-            if (tabKey === 'text') {
-                qrPane.style.setProperty('display', 'none', 'important');
-                textPane.style.setProperty('display', 'block', 'important');
-                if (btnQr) btnQr.classList.remove('active');
-                if (btnText) btnText.classList.add('active');
-            } else {
-                qrPane.style.setProperty('display', 'flex', 'important');
-                textPane.style.setProperty('display', 'none', 'important');
-                if (btnQr) btnQr.classList.add('active');
-                if (btnText) btnText.classList.remove('active');
-            }
-        }
-    };
-
-    window.openPatientCard = function(qrType) {
-        var patId = "";
-        try {
-            if (window.currentUser) {
-                patId = window.currentUser.patient_id || window.currentUser.id;
-            }
-            if (!patId) {
-                var saved = JSON.parse(localStorage.getItem("pulsesync_user") || "{}");
-                patId = saved.patient_id || saved.id || "";
-            }
-        } catch (e) {}
-
-        if (!patId) {
-            var img = document.getElementById("pat-profile-qr-img");
-            if (img && img.getAttribute("data-web-url")) {
-                var parts = img.getAttribute("data-web-url").split("/");
-                patId = parts[parts.length - 1];
-            }
-        }
-
-        if (!patId) {
-            patId = "pat_rahul_mishra";
-        }
-
-        var path = (qrType === 'INSURANCE_CLAIM') ? ('/qr/insurance/' + patId) : ('/qr/patient/' + patId);
-        window.open(path, '_blank');
-    };
-
-    window.copyQrTextDetails = function(cardKey) {
-        var textEl = document.getElementById(cardKey + '-raw-text');
-        if (!textEl) return;
-        var text = textEl.textContent.trim();
-        navigator.clipboard.writeText(text).then(function() {
-            if (window.showToast) window.showToast("Details copied to clipboard!", "success");
-            else alert("Copied to clipboard!");
-        }).catch(function() {
-            if (window.showToast) window.showToast("Copied details", "info");
-        });
-    };
-    </script>
-</body>
-</html>
+<div id="main-app-container" style="display:none"></div>
+<div id="toast-banner" class="toast-banner"><span id="toast-msg"></span></div>
+<dialog id="hf-dialog"><div id="hf-dialog-content"></div><button type="button" class="secondary" onclick="document.getElementById('hf-dialog').close()">Close</button></dialog>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="/static/ui.js?v=20261016-visit1"></script>
+<script src="/static/dashboards.js?v=20261016-visit1"></script>
+<script src="/static/app.js?v=20261016-visit1"></script>
+<script src="/static/vendor/jsQR.js?v=20261016-visit1"></script>
+<script src="/static/qr-tools.js?v=20261016-visit1"></script>
+<script src="/static/workflow.js?v=20261016-visit1"></script>
+<script src="/static/pin-access.js?v=20261016-visit1"></script>
+<link rel="stylesheet" href="/static/registration.css"><script src="/static/registration.js"></script></body></html>

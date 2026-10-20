@@ -1,0 +1,237 @@
+..F....                                                                  [100%]
+=================================== FAILURES ===================================
+_____________ test_original_database_migrates_without_record_loss ______________
+
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-0/test_original_database_migrate0')
+
+    def test_original_database_migrates_without_record_loss(tmp_path):
+     root=Path(__file__).resolve().parents[1];target=tmp_path/'legacy.db'
+>    target.write_bytes((root/'pulsesync.db').read_bytes())
+                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_migration.py:7: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/usr/lib/python3.13/pathlib/_abc.py:625: in read_bytes
+    with self.open(mode='rb') as f:
+         ^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = PosixPath('/mnt/data/healthfix/AiHealth-main/pulsesync.db'), mode = 'rb'
+buffering = -1, encoding = None, errors = None, newline = None
+
+    def open(self, mode='r', buffering=-1, encoding=None,
+             errors=None, newline=None):
+        """
+        Open the file pointed to by this path and return a file object, as
+        the built-in open() function does.
+        """
+        if "b" not in mode:
+            encoding = io.text_encoding(encoding)
+>       return io.open(self, mode, buffering, encoding, errors, newline)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       FileNotFoundError: [Errno 2] No such file or directory: '/mnt/data/healthfix/AiHealth-main/pulsesync.db'
+
+/usr/lib/python3.13/pathlib/_local.py:539: FileNotFoundError
+=============================== warnings summary ===============================
+backend/main.py:109
+  /mnt/data/healthfix/AiHealth-main/backend/main.py:109: DeprecationWarning: 
+          on_event is deprecated, use lifespan event handlers instead.
+  
+          Read more about it in the
+          [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+          
+    @app.on_event("startup")
+
+../../../../opt/pyvenv/lib/python3.13/site-packages/fastapi/applications.py:4579
+  /opt/pyvenv/lib/python3.13/site-packages/fastapi/applications.py:4579: DeprecationWarning: 
+          on_event is deprecated, use lifespan event handlers instead.
+  
+          Read more about it in the
+          [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+          
+    return self.router.on_event(event_type)
+
+tests/test_journey.py: 276 warnings
+tests/test_pin_access.py: 79 warnings
+tests/test_qr_consultation_authorization.py: 42 warnings
+tests/test_visit.py: 166 warnings
+  /opt/pyvenv/lib/python3.13/site-packages/sqlalchemy/sql/schema.py:3623: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    return util.wrap_callable(lambda ctx: fn(), fn)  # type: ignore
+
+tests/test_journey.py::test_full_journey
+tests/test_journey.py::test_full_journey
+tests/test_pin_access.py::test_pin_and_request_lifecycle
+tests/test_visit.py::test_decisions_and_atomic_finalization
+  /mnt/data/healthfix/AiHealth-main/backend/routers/auth.py:489: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    last_active_at=datetime.utcnow(),
+
+tests/test_journey.py: 29 warnings
+tests/test_pin_access.py: 5 warnings
+tests/test_qr_consultation_authorization.py: 10 warnings
+tests/test_visit.py: 16 warnings
+  /mnt/data/healthfix/AiHealth-main/backend/security.py:36: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    AccessGrant.revoked_at.is_(None), AccessGrant.expires_at > datetime.utcnow()).first() is not None
+
+tests/test_journey.py: 8 warnings
+tests/test_pin_access.py: 1 warning
+tests/test_visit.py: 1 warning
+  /mnt/data/healthfix/AiHealth-main/backend/routers/workflow.py:657: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    grant=AccessGrant(patient_id=pid,user_id=target.id if target else None,scope=body.scope,token_hash=hashlib.sha256(raw.encode()).hexdigest(),expires_at=datetime.utcnow()+timedelta(minutes=body.minutes))
+
+tests/test_journey.py::test_full_journey
+  /mnt/data/healthfix/AiHealth-main/backend/routers/workflow.py:261: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    measured_at=body.measured_at or datetime.utcnow(),created_by=user.id,source="HOSPITAL_STAFF" if user.role=="HOSPITAL_ADMIN" else "CLINICIAN")
+
+tests/test_journey.py: 14 warnings
+tests/test_pin_access.py: 1 warning
+tests/test_visit.py: 2 warnings
+  /mnt/data/healthfix/AiHealth-main/backend/routers/workflow.py:59: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    for f in db.query(FollowUp).filter(FollowUp.patient_id == patient_id, FollowUp.status == 'SCHEDULED', FollowUp.due_at <= datetime.utcnow()+timedelta(days=2)).all():
+
+tests/test_journey.py::test_full_journey
+tests/test_visit.py::test_decisions_and_atomic_finalization
+  /mnt/data/healthfix/AiHealth-main/backend/routers/workflow.py:341: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    ids=[g.patient_id for g in db.query(AccessGrant).filter(AccessGrant.user_id==user.id,AccessGrant.scope=='PRESCRIPTION',AccessGrant.expires_at>datetime.utcnow(),AccessGrant.revoked_at.is_(None))]
+
+tests/test_journey.py::test_full_journey
+tests/test_visit.py::test_decisions_and_atomic_finalization
+  /mnt/data/healthfix/AiHealth-main/backend/routers/workflow.py:370: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    changed=db.execute(update(Prescription).where(Prescription.id==rid,Prescription.status=='PENDING').values(status='DISPENSED',pharmacy_id=pharm.id,dispensed_at=datetime.utcnow())).rowcount
+
+tests/test_journey.py::test_full_journey
+  /mnt/data/healthfix/AiHealth-main/backend/routers/workflow.py:702: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    token=jwt.encode({'purpose':'hospital_affiliation','hospital_id':h.id,'exp':datetime.utcnow()+timedelta(hours=1)},JWT_SECRET,algorithm='HS256')
+
+tests/test_journey.py::test_full_journey
+tests/test_journey.py::test_expiry_ai_failure_and_concurrent_bed_allocation
+tests/test_journey.py::test_expiry_ai_failure_and_concurrent_bed_allocation
+  /mnt/data/healthfix/AiHealth-main/backend/routers/workflow.py:496: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    state='OCCUPIED',is_occupied=True,current_patient_id=body.patient_id,assigned_doctor_id=body.doctor_id,admission_reason=body.reason,admission_date=datetime.utcnow())).rowcount
+
+tests/test_journey.py::test_full_journey
+tests/test_journey.py::test_expiry_ai_failure_and_concurrent_bed_allocation
+  /mnt/data/healthfix/AiHealth-main/backend/routers/workflow.py:500: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    db.execute(update(Patient).where(Patient.id==patient.id).values(updated_at=datetime.utcnow()))
+
+tests/test_journey.py::test_full_journey
+  /mnt/data/healthfix/AiHealth-main/backend/routers/workflow.py:526: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    changed=db.execute(update(Admission).where(Admission.id==aid,Admission.status=='ADMITTED').values(status='DISCHARGED',discharged_at=datetime.utcnow(),discharge_summary=body.summary)).rowcount
+
+tests/test_journey.py::test_full_journey
+  /mnt/data/healthfix/AiHealth-main/backend/routers/workflow.py:542: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    due=body.due_at or (datetime.utcnow()+timedelta(days=body.after_days) if body.after_days else None)
+
+tests/test_journey.py::test_full_journey
+  /mnt/data/healthfix/AiHealth-main/backend/routers/workflow.py:543: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    if not due or due.replace(tzinfo=None)<datetime.utcnow(): raise HTTPException(400,'Specify a future follow-up date or positive day interval')
+
+tests/test_journey.py::test_full_journey
+  /mnt/data/healthfix/AiHealth-main/backend/routers/workflow.py:732: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    if body.confirm_current: p.last_verified_at=datetime.utcnow()
+
+tests/test_journey.py::test_full_journey
+tests/test_journey.py::test_expiry_ai_failure_and_concurrent_bed_allocation
+  /mnt/data/healthfix/AiHealth-main/backend/routers/workflow.py:677: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    if not g or g.revoked_at or g.expires_at<=datetime.utcnow(): raise HTTPException(403,'Emergency access expired or revoked')
+
+tests/test_journey.py::test_full_journey
+  /mnt/data/healthfix/AiHealth-main/backend/routers/workflow.py:672: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    require_role(user,'PATIENT');patient_access(db,user,g.patient_id);g.revoked_at=datetime.utcnow();audit(db,user,g.patient_id,'REVOKE_ACCESS',gid);db.commit();return {'revoked':True}
+
+tests/test_journey.py::test_full_journey
+tests/test_journey.py::test_full_journey
+  /mnt/data/healthfix/AiHealth-main/backend/routers/workflow.py:639: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    if not g or g.revoked_at or g.expires_at<=datetime.utcnow() or g.user_id!=user.id: raise HTTPException(403,'Consent expired, revoked, or intended for another provider')
+
+tests/test_journey.py::test_expiry_ai_failure_and_concurrent_bed_allocation
+  /mnt/data/healthfix/AiHealth-main/tests/test_journey.py:162: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    db.get(AccessGrant,g['grant']['id']).expires_at=datetime.utcnow()-timedelta(seconds=1);db.commit()
+
+tests/test_pin_access.py::test_pin_and_request_lifecycle
+  /mnt/data/healthfix/AiHealth-main/backend/routers/pin_access.py:38: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    now = datetime.utcnow()
+
+tests/test_pin_access.py::test_pin_and_request_lifecycle
+tests/test_pin_access.py::test_pin_and_request_lifecycle
+tests/test_pin_access.py::test_pin_and_request_lifecycle
+tests/test_pin_access.py::test_pin_and_request_lifecycle
+tests/test_pin_access.py::test_pin_and_request_lifecycle
+tests/test_qr_consultation_authorization.py::test_qr_pin_consultation_authorization
+tests/test_qr_consultation_authorization.py::test_qr_pin_consultation_authorization
+tests/test_qr_consultation_authorization.py::test_qr_pin_consultation_authorization
+  /mnt/data/healthfix/AiHealth-main/backend/routers/pin_access.py:74: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    r=db.query(AccessRequest).filter(AccessRequest.patient_id==patient.id,AccessRequest.provider_user_id==user.id,AccessRequest.status=='PENDING',AccessRequest.expires_at>datetime.utcnow()).first()
+
+tests/test_pin_access.py::test_pin_and_request_lifecycle
+tests/test_pin_access.py::test_pin_and_request_lifecycle
+tests/test_pin_access.py::test_pin_and_request_lifecycle
+tests/test_pin_access.py::test_pin_and_request_lifecycle
+tests/test_qr_consultation_authorization.py::test_qr_pin_consultation_authorization
+tests/test_qr_consultation_authorization.py::test_qr_pin_consultation_authorization
+tests/test_qr_consultation_authorization.py::test_qr_pin_consultation_authorization
+  /mnt/data/healthfix/AiHealth-main/backend/routers/pin_access.py:76: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    r=AccessRequest(patient_id=patient.id,provider_user_id=user.id,scope='PRESCRIPTION' if user.role=='PHARMACY' else 'CLINICAL',expires_at=datetime.utcnow()+timedelta(minutes=body.minutes))
+
+tests/test_pin_access.py: 21 warnings
+tests/test_qr_consultation_authorization.py: 12 warnings
+  /mnt/data/healthfix/AiHealth-main/backend/routers/pin_access.py:61: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    if r.status in ('PENDING','APPROVED') and r.expires_at<=datetime.utcnow():return 'EXPIRED'
+
+tests/test_pin_access.py::test_pin_and_request_lifecycle
+tests/test_pin_access.py::test_pin_and_request_lifecycle
+  /mnt/data/healthfix/AiHealth-main/backend/pin_security.py:31: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    user.pin_locked_until=datetime.utcnow()+timedelta(minutes=15)
+
+tests/test_pin_access.py::test_pin_and_request_lifecycle
+tests/test_pin_access.py::test_pin_and_request_lifecycle
+tests/test_pin_access.py::test_pin_and_request_lifecycle
+  /mnt/data/healthfix/AiHealth-main/backend/pin_security.py:20: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    if user.pin_locked_until and user.pin_locked_until > datetime.utcnow():
+
+tests/test_pin_access.py::test_pin_and_request_lifecycle
+  /mnt/data/healthfix/AiHealth-main/tests/test_pin_access.py:54: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    u=db.get(User,p['user']['id']);u.pin_locked_until=datetime.utcnow()-timedelta(seconds=1);db.commit()
+
+tests/test_pin_access.py::test_pin_and_request_lifecycle
+tests/test_qr_consultation_authorization.py::test_qr_pin_consultation_authorization
+  /mnt/data/healthfix/AiHealth-main/backend/routers/pin_access.py:95: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    db.get(AccessGrant,r.grant_id).revoked_at=datetime.utcnow();r.status='REVOKED'
+
+tests/test_pin_access.py::test_pin_and_request_lifecycle
+  /mnt/data/healthfix/AiHealth-main/tests/test_pin_access.py:65: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    with SessionLocal() as db:r=db.get(AccessRequest,req['id']);r.expires_at=datetime.utcnow()-timedelta(seconds=1);db.commit()
+
+tests/test_pin_access.py::test_pin_and_request_lifecycle
+  /mnt/data/healthfix/AiHealth-main/tests/test_pin_access.py:74: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    with SessionLocal() as db:grant=db.get(AccessGrant,g['grant']['id']);grant.expires_at=datetime.utcnow()-timedelta(seconds=1);db.commit()
+
+tests/test_qr_consultation_authorization.py::test_qr_pin_consultation_authorization
+tests/test_qr_consultation_authorization.py::test_qr_pin_consultation_authorization
+  /mnt/data/healthfix/AiHealth-main/backend/security.py:64: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    AccessRequest.expires_at > datetime.utcnow(), AccessGrant.patient_id == patient_id,
+
+tests/test_qr_consultation_authorization.py::test_qr_pin_consultation_authorization
+tests/test_qr_consultation_authorization.py::test_qr_pin_consultation_authorization
+  /mnt/data/healthfix/AiHealth-main/backend/security.py:66: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    AccessGrant.revoked_at.is_(None), AccessGrant.expires_at > datetime.utcnow())
+
+tests/test_qr_consultation_authorization.py::test_qr_pin_consultation_authorization
+  /mnt/data/healthfix/AiHealth-main/tests/test_qr_consultation_authorization.py:50: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    r=db.get(AccessRequest,expired['id']);r.expires_at=datetime.utcnow()-timedelta(seconds=1);db.commit()
+
+tests/test_visit.py::test_decisions_and_atomic_finalization
+tests/test_visit.py::test_decisions_and_atomic_finalization
+tests/test_visit.py::test_decisions_and_atomic_finalization
+tests/test_visit.py::test_decisions_and_atomic_finalization
+  /mnt/data/healthfix/AiHealth-main/backend/routers/visit.py:94: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    claimed=db.execute(update(Consultation).where(Consultation.id==cid,Consultation.status.notin_(['COMPLETED','CANCELLED','NO_SHOW'])).values(updated_at=datetime.utcnow())).rowcount
+
+tests/test_visit.py::test_decisions_and_atomic_finalization
+tests/test_visit.py::test_decisions_and_atomic_finalization
+  /mnt/data/healthfix/AiHealth-main/backend/routers/visit.py:172: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    row.content=dict(row.content,changes=changes,warnings=warnings,active_medications=snapshot);row.finalized_at=datetime.utcnow()
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests/test_migration.py::test_original_database_migrates_without_record_loss - FileNotFoundError: [Errno 2] No such file or directory: '/mnt/data/healthfix/AiHealth-main/pulsesync.db'
+1 failed, 6 passed, 747 warnings in 12.92s

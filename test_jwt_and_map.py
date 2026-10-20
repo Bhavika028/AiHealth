@@ -1,7 +1,9 @@
 """
 PulseSync AI - Automated Test for JWT Authentication & Real-World Map Geolocation
 """
-import sys
+import sys, os, tempfile
+os.environ.setdefault("DATABASE_URL", "sqlite:///"+tempfile.mktemp(suffix=".db"))
+os.environ.setdefault("ENABLE_EXTERNAL_MAPS", "false")
 from fastapi.testclient import TestClient
 from backend.main import app
 from backend.database import init_db
@@ -92,7 +94,7 @@ def test_full_flow():
     print(f"Passed: Pharmacy registered with coordinates (19.1363, 72.8277).")
 
     print("\n--- TEST 9: Nearby Medical Stores Map Endpoint with Live Coordinates ---")
-    res_nearby = client.get("/api/clinical/pharmacies/nearby?lat=19.1360&lng=72.8275&radius_km=5.0")
+    res_nearby = client.get("/api/clinical/pharmacies/nearby?lat=19.1360&lng=72.8275&radius_km=5.0", headers={"Authorization": f"Bearer {jwt_token}"})
     assert res_nearby.status_code == 200, f"Nearby failed: {res_nearby.text}"
     nearby_data = res_nearby.json()
     assert nearby_data["success"] is True

@@ -11,10 +11,12 @@ from fastapi.responses import FileResponse, JSONResponse
 import logging
 
 from .database import init_db, get_db_info
-from .routers import auth, intake, ai_summarizer, qr_engine, clinical, realtime
+from .routers import auth, intake, ai_summarizer, qr_engine, clinical, realtime, workflow
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("pulsesync.main")
+
+from fastapi.exceptions import RequestValidationError
 
 app = FastAPI(
     title="PulseSync AI API",
@@ -22,16 +24,36 @@ app = FastAPI(
     version="2.0.0"
 )
 
+@app.exception_handler(RequestValidationError)
+async def validation_error(request, exc):
+    return JSONResponse(status_code=422,content={'detail':[{'loc':list(e['loc']),'msg':e['msg'],'type':e['type']} for e in exc.errors()]})
+
 # CORS configuration
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=os.getenv("CORS_ORIGINS", "http://localhost:8000,http://127.0.0.1:8000").split(","),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+@app.middleware("http")
+async def security_response_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["Referrer-Policy"] = "no-referrer"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Permissions-Policy"] = "camera=(self), microphone=(), geolocation=(self)"
+    if request.url.path.startswith("/api/"):
+        response.headers["Cache-Control"] = "no-store"
+    return response
+
 # Register API Routers
+from .routers import pin_access
+app.include_router(pin_access.router)
+from .routers import visit
+app.include_router(visit.router)
+app.include_router(workflow.router)
 app.include_router(auth.router)
 app.include_router(intake.router)
 app.include_router(ai_summarizer.router)
@@ -55,12 +77,11 @@ def qr_insurance_card(patient_id: str, db: Session = Depends(get_db)):
 # Health & Metrics Endpoint
 @app.get("/api/health")
 def health_check():
-    db_info = get_db_info()
     return {
         "status": "healthy",
         "service": "PulseSync AI Healthcare Platform",
         "version": "2.0.0",
-        "database": db_info
+        "database": "configured"
     }
 
 # Mount Frontend Static Assets
@@ -97,3 +118,16 @@ if __name__ == "__main__":
     port = int(os.getenv("PORT", 8000))
     host = os.getenv("HOST", "0.0.0.0")
     uvicorn.run("backend.main:app", host=host, port=port, reload=True)
+
+@app.get('/qr/{kind}/{provider_id}', response_class=__import__('fastapi.responses',fromlist=['HTMLResponse']).HTMLResponse)
+def provider_landing(kind:str,provider_id:str,db:Session=Depends(get_db)):
+    import html
+    from .models import Doctor,Hospital,PharmacyStore
+    from fastapi.responses import HTMLResponse
+    model={'doctor':Doctor,'hospital':Hospital,'pharmacy':PharmacyStore}.get(kind)
+    if not model: return HTMLResponse('Not found',status_code=404)
+    row=db.get(model,provider_id)
+    if not row: return HTMLResponse('Not found',status_code=404)
+    name=getattr(row,'full_name',None) or getattr(row,'name',None) or getattr(row,'store_name',None)
+    address=getattr(row,'clinic_address',None) or getattr(row,'address',None) or ''
+    return HTMLResponse(f'<!doctype html><meta name="viewport" content="width=device-width"><title>PulseSync provider</title><h1>{html.escape(name)}</h1><p>{html.escape(address)}</p><a href="/">Sign in to request care</a>')
