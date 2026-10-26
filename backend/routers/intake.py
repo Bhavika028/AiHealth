@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 import datetime
 
 from ..database import get_db
-from ..security import current_user, patient_access, require_role, entity
+from ..security import current_user, patient_access, require_role, entity, check_daily_visit_limit, get_patient_daily_visit_count, DAILY_VISIT_LIMIT
 from ..models import Patient, Consultation, DoctorNote, Doctor, Clinic
 
 router = APIRouter(prefix="/api/intake", tags=["Adaptive Patient Intake"])
@@ -203,6 +203,20 @@ def get_complaint_branch_questions(complaint_key: str):
     }
 
 
+@router.get("/daily-quota/{patient_id}")
+def get_daily_visit_quota(patient_id: str, db: Session = Depends(get_db), user = Depends(current_user)):
+    patient_access(db, user, patient_id)
+    count = get_patient_daily_visit_count(db, patient_id)
+    limit = DAILY_VISIT_LIMIT
+    return {
+        "patient_id": patient_id,
+        "visits_today": count,
+        "max_visits_per_day": limit,
+        "remaining_visits": max(0, limit - count),
+        "limit_reached": count >= limit
+    }
+
+
 @router.post("/submit")
 def submit_patient_intake(payload: PatientIntakePayload, db: Session = Depends(get_db), user=Depends(current_user)):
     """
@@ -237,6 +251,9 @@ def submit_patient_intake(payload: PatientIntakePayload, db: Session = Depends(g
                 urgent_reasons.append(f"Hypertensive Crisis (Systolic BP {sys_bp} mmHg >= 180)")
         except Exception:
             pass
+
+    # Enforce Daily Visit Limit (bypassed if urgent / emergency)
+    check_daily_visit_limit(db, payload.patient_id, is_urgent=is_urgent)
 
     import uuid
     consult_id = str(uuid.uuid4())

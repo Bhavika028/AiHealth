@@ -1,12 +1,33 @@
 """Backend resource authorization. Identity never grants clinical consent by itself."""
 import hashlib
+import os
 from datetime import datetime
 from fastapi import Depends, Header, HTTPException
 from sqlalchemy.orm import Session
 from .database import get_db
-from .models import User, Patient, Doctor, Hospital, PharmacyStore, Consultation
+from .models import User, Patient, Doctor, Hospital, PharmacyStore, Consultation, FamilyMember
 from .workflow_models import AccessGrant, AccessRequest, ConsultationAuthorization, Referral, Admission, RevokedToken
 from .routers.auth import decode_access_token
+
+DAILY_VISIT_LIMIT = int(os.getenv("MAX_VISITS_PER_DAY", "2"))
+
+def get_patient_daily_visit_count(db: Session, patient_id: str) -> int:
+    today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+    return db.query(Consultation).filter(
+        Consultation.patient_id == patient_id,
+        Consultation.created_at >= today_start,
+        Consultation.status.notin_(['CANCELLED', 'NO_SHOW'])
+    ).count()
+
+def check_daily_visit_limit(db: Session, patient_id: str, is_urgent: bool = False) -> int:
+    """Enforce daily visit limit per patient (configurable, default 2). Urgent/emergency bypasses standard limit."""
+    count = get_patient_daily_visit_count(db, patient_id)
+    if count >= DAILY_VISIT_LIMIT and not is_urgent:
+        raise HTTPException(
+            status_code=429,
+            detail=f"Daily visit limit reached. You have already booked {count} of {DAILY_VISIT_LIMIT} allowed visits today. For urgent medical emergencies, please proceed to an emergency care facility or choose emergency triage."
+        )
+    return count
 
 def current_user(authorization: str = Header(None), db: Session = Depends(get_db)):
     if not authorization or not authorization.startswith('Bearer '):
@@ -39,8 +60,12 @@ def patient_access(db, user, patient_id, scope='CLINICAL'):
     patient = db.get(Patient, patient_id)
     if not patient:
         raise HTTPException(404, 'Patient not found')
-    if user.role == 'PATIENT' and patient.user_id == user.id:
-        return patient
+    if user.role == 'PATIENT':
+        if patient.user_id == user.id:
+            return patient
+        fam = db.query(FamilyMember).filter(FamilyMember.primary_user_id == user.id, FamilyMember.patient_id == patient.id).first()
+        if fam:
+            return patient
     if scope == 'PRESCRIPTION' and user.role == 'PHARMACY':
         if grant_exists(db, user, patient_id, ['PRESCRIPTION']):
             return patient
@@ -81,8 +106,13 @@ def encounter_access(db, user, consult_id, write=False):
     if c.status == 'COMPLETED' and not write:
         if user.role == 'PATIENT':
             patient = db.get(Patient, c.patient_id)
-            if patient and patient.user_id == user.id:
-                return c
+            if patient:
+                if patient.user_id == user.id:
+                    return c
+                fam = db.query(FamilyMember).filter(FamilyMember.primary_user_id == user.id, FamilyMember.patient_id == patient.id).first()
+                if fam:
+                    return c
+
         elif user.role == 'DOCTOR':
             doc = entity(db, user, Doctor)
             if c.doctor_id == doc.id:

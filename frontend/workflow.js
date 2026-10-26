@@ -1,7 +1,7 @@
 /* Patient-centred portal. Existing authentication and adaptive intake APIs are reused. */
 const HF = (() => {
  let scannedPatient=null, scannedAccess=null;
- let user, page, patientId, providers=[], encounters=[], refs=[], meds=[], follow=[], map, regMap, epoch=0, navigationController;
+ let user, page, patientId, providers=[], encounters=[], refs=[], meds=[], follow=[], familyMembers=[], map, regMap, epoch=0, navigationController;
  const $=id=>document.getElementById(id);
  const e=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
  const date=value=>value?new Date(/(?:Z|[+-]\d{2}:\d{2})$/.test(value)||/^\d{4}-\d{2}-\d{2}$/.test(value)?value:value+'Z').toLocaleString('en-IN',{day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}):'Not recorded';
@@ -22,9 +22,55 @@ const HF = (() => {
  function bind(id,handler){const node=$(id);if(!node)return;node.onsubmit=async ev=>{ev.preventDefault();const submit=node.querySelector('button[type=submit]');submit.disabled=true;const msg=node.querySelector('.form-message');msg.innerHTML='Saving…';try{await handler(Object.fromEntries(new FormData(node)),node);if(node.isConnected)msg.innerHTML='<p>Saved.</p>';}catch(error){msg.innerHTML=`<p class="hf-error">${e(error.message)}</p>`}finally{submit.disabled=false}}}
  function dialog(title,body){$('hf-dialog-content').innerHTML=`<h2>${e(title)}</h2>${body}`;QRTools.addDownloads($('hf-dialog-content'));$('hf-dialog').showModal();}
  function navItems(){return user.role==='PATIENT'?[['overview','Overview'],['history','Medical History'],['appointments','Appointments / Follow-ups'],['medications','Prescriptions'],['referrals','Referrals'],['documents','Documents'],['nearby','Nearby Care'],['profile','Profile'],['consent','Consent & QR'],['notifications','Notifications'],['audit','Access log']]:user.role==='DOCTOR'?[['overview','Overview'],['queue','Queue'],['consultations','Consultations'],['patients','Patients'],['referrals','Referrals'],['appointments','Follow-ups'],['notifications','Notifications'],['settings','Clinic settings']]:user.role==='HOSPITAL_ADMIN'?[['overview','Overview'],['referrals','Incoming Referrals'],['appointments','Outpatient appointments'],['patients','Patients'],['consultations','Specialist encounters'],['admissions','Admissions'],['beds','Beds / Wards'],['doctors','Doctors'],['notifications','Notifications'],['settings','Hospital settings']]:[['overview','Overview'],['prescriptions','Prescriptions'],['dispensing','Dispensing'],['inventory','Inventory'],['notifications','Notifications'],['settings','Store settings']];}
- function shell(){const root=$('main-app-container');const collapsed=localStorage.getItem('hf-sidebar-collapsed')==='true';root.innerHTML=`<header class="hf-top"><div class="hf-brand"><button class="hf-nav-toggle" aria-label="Toggle navigation" aria-expanded="${!collapsed}" onclick="HUI.toggleNav()">${HUI.icon('menu')}</button><span class="hf-mark">${HUI.icon('pulse')}</span>PulseSync<span class="hf-meta">HEALTHFLOW</span></div><div class="hf-toolbar"><label class="hf-global-search">${HUI.icon('search')}<input aria-label="Search pages" placeholder="Find a page…" oninput="HUI.searchPages(this.value)"></label>${button('Account PIN',"PinAccess.settings()")}${button('QR requests',"PinAccess.requests()")}${button('My QR',"HF.myQR()")}${button('Scan QR',"QRTools.open()")}${button('Notifications',"HF.go('notifications')",'hf-notification')}<div class="hf-account"><strong>${e(user.name)}</strong><div class="hf-meta">${e(user.role.replaceAll('_',' '))}</div></div>${button('Sign out','logout()')}</div></header><div class="hf-layout ${collapsed?'is-collapsed':''}"><nav class="hf-sidebar" aria-label="Portal navigation"><small>${e(user.role==='PATIENT'?'Your health':'Clinical workspace')}</small>${navItems().map(([key,label])=>`<button title="${e(label)}" aria-label="${e(label)}" aria-current="${page===key?'page':'false'}" class="${page===key?'active':''}" onclick="HF.go('${key}')">${HUI.icon(key)}<span>${e(label)}</span></button>`).join('')}<p class="hf-nav-empty" hidden>No matching pages.</p></nav><main id="hf-content" class="hf-main" aria-live="polite"></main></div>`}
+ 
+ async function loadFamily(){
+  if(user.role==='PATIENT'){
+   try{
+    familyMembers=await api('workflow/family');
+    const saved=localStorage.getItem('hf-active-patient:'+user.id);
+    if(saved&&familyMembers.some(f=>f.patient_id===saved)){
+     patientId=saved;
+    }else if(!patientId&&familyMembers.length){
+     patientId=familyMembers[0].patient_id;
+    }
+   }catch(err){familyMembers=[]}
+  }
+ }
+
+ async function switchFamily(val){
+  if(val==='__NEW__'){
+   addFamilyModal();
+   return;
+  }
+  patientId=val;
+  localStorage.setItem('hf-active-patient:'+user.id,val);
+  const m=familyMembers.find(f=>f.patient_id===val);
+  showToast('Switched to profile: '+(m?m.full_name:'Active Patient'),'info');
+  await go(page);
+ }
+
+ function shell(){
+  const root=$('main-app-container');
+  const collapsed=localStorage.getItem('hf-sidebar-collapsed')==='true';
+  const familySwitcher=user.role==='PATIENT'&&familyMembers.length?`
+   <div class="hf-family-switcher-wrap" title="Active Patient Profile">
+    <label class="hf-family-switcher-label">
+     <span>👤</span>
+     <select class="hf-family-select" onchange="HF.switchFamily(this.value)" aria-label="Switch Profile">
+       ${familyMembers.map(m=>`
+         <option value="${e(m.patient_id)}" ${m.patient_id===patientId?'selected':''}>
+           ${m.is_primary ? e(m.full_name) + ' (Myself)' : (m.relationship_type==='CHILD'?'👶 ':(m.relationship_type==='ELDERLY_PARENT'?'👵 ':'👤 ')) + e(m.full_name) + ' (' + e(m.relationship_type.replace('_',' ')) + ')'}
+         </option>
+       `).join('')}
+       <option value="__NEW__">➕ Add Family…</option>
+     </select>
+    </label>
+   </div>`:'';
+
+  root.innerHTML=`<header class="hf-top"><div class="hf-brand"><button class="hf-nav-toggle" aria-label="Toggle navigation" aria-expanded="${!collapsed}" onclick="HUI.toggleNav()">${HUI.icon('menu')}</button><span class="hf-mark">${HUI.icon('pulse')}</span>PulseSync<span class="hf-meta">HEALTHFLOW</span></div><div class="hf-toolbar"><label class="hf-global-search">${HUI.icon('search')}<input aria-label="Search pages" placeholder="Search pages…" oninput="HUI.searchPages(this.value)"></label>${familySwitcher}${button('🔐 PIN',"PinAccess.settings()")}${button('QR Access',"PinAccess.requests()")}${button('🪪 My QR',"HF.myQR()")}${button('📷 Scan',"QRTools.open()")}${button('🔔',"HF.go('notifications')",'hf-notification-btn')}<div class="hf-account-chip"><div class="hf-account"><strong>${e(user.name)}</strong><span class="hf-meta">${e(user.role.replaceAll('_',' '))}</span></div>${button('Sign out','logout()','hf-logout-btn')}</div></div></header><div class="hf-layout ${collapsed?'is-collapsed':''}"><nav class="hf-sidebar" aria-label="Portal navigation"><small>${e(user.role==='PATIENT'?'Your health':'Clinical workspace')}</small>${navItems().map(([key,label])=>`<button title="${e(label)}" aria-label="${e(label)}" aria-current="${page===key?'page':'false'}" class="${page===key?'active':''}" onclick="HF.go('${key}')">${HUI.icon(key)}<span>${e(label)}</span></button>`).join('')}<p class="hf-nav-empty" hidden>No matching pages.</p></nav><main id="hf-content" class="hf-main" aria-live="polite"></main></div>`
+ }
  function head(title,sub='',action=''){return `<div class="hf-breadcrumb">${button('Overview',"HF.go('overview')",'text-action')}<span>/</span><span>${e(title)}</span></div><div class="hf-page-head"><div><h1>${e(title)}</h1><div class="hf-muted">${e(sub)}</div></div><div class="hf-toolbar">${action}</div></div>`}
- async function mount(u){user=u;patientId=u.patient_id||null;providers=[];encounters=[];refs=[];meds=[];follow=[];const saved=localStorage.getItem('hf-page:'+u.id);page=navItems().some(x=>x[0]===saved)?saved:'overview';await go(page);void PinAccess.checkSetup()}
+ async function mount(u){user=u;patientId=u.patient_id||null;providers=[];encounters=[];refs=[];meds=[];follow=[];familyMembers=[];if(u.role==='PATIENT')await loadFamily();const saved=localStorage.getItem('hf-page:'+u.id);page=navItems().some(x=>x[0]===saved)?saved:'overview';await go(page);void PinAccess.checkSetup()}
  async function go(next){window.QRTools?.close();navigationController?.abort();navigationController=new AbortController();page=next;localStorage.setItem('hf-page:'+user.id,next);const seq=++epoch;if(map){map.remove();map=null}shell();$('hf-content').classList.remove('hf-workspace');$('hf-content').innerHTML='<div class="hf-loading" role="status"><span>Loading care records…</span><div class="hf-skeleton"></div><div class="hf-skeleton"></div><div class="hf-skeleton"></div></div>';try{providers=await api('workflow/providers');if(seq!==epoch)return;await render(next)}catch(err){if(seq===epoch&&err.name!=='AbortError')$('hf-content').innerHTML=head('Unable to load this view')+`<div class="hf-error">${e(err.message)}</div><p>${button('Retry',`HF.go('${e(next)}')`)}</p>`}}
  function timeline(events,limit){return HUI.timeline(events.slice(0,limit||events.length),{e,date,tag,button,user});}
  async function render(which){
@@ -63,6 +109,27 @@ const HF = (() => {
   follow=await api('workflow/follow-ups');
   const doctors=providers.filter(p=>p.role==='DOCTOR');
   const myConsultations = user.role==='PATIENT' ? await api('workflow/consultations') : [];
+  let quota = null;
+  if(user.role==='PATIENT' && patientId){
+   try{quota=await api('intake/daily-quota/'+patientId)}catch(e){quota=null}
+  }
+  const quotaHtml = quota ? `
+   <section class="hf-section" style="margin-bottom:18px;background:${quota.limit_reached?'#fef2f2':'#f0fdf4'};border:1.5px solid ${quota.limit_reached?'#fca5a5':'#86efac'};border-radius:12px;padding:14px 18px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
+     <div>
+      <h3 style="margin:0 0 4px 0;font-size:15px;color:${quota.limit_reached?'#991b1b':'#166534'};">📅 Daily Visit Quota: ${quota.visits_today} of ${quota.max_visits_per_day} visits used today</h3>
+      <p style="margin:0;font-size:13px;color:#475569;">${quota.remaining_visits} consultation quota remaining for this patient today.</p>
+     </div>
+     <span class="hf-status" style="background:${quota.limit_reached?'#fee2e2':'#dcfce7'};color:${quota.limit_reached?'#dc2626':'#15803d'};font-weight:700;font-size:12px;padding:6px 12px;border-radius:9999px;">
+      ${quota.limit_reached?'Limit Reached (Max '+quota.max_visits_per_day+'/day)':'Quota Available'}
+     </span>
+    </div>
+    ${quota.limit_reached?`
+     <div style="margin-top:10px;padding:10px;background:#fee2e2;border-radius:8px;font-size:12px;color:#991b1b;line-height:1.4;">
+      ⚠️ <strong>Daily Limit Reached:</strong> Each patient is limited to ${quota.max_visits_per_day} consultations per calendar day to ensure provider availability. For medical emergencies (severe chest pain, respiratory distress, trauma), proceed immediately to an emergency department.
+     </div>`:''}
+   </section>`:'';
+
   const consultHistoryHtml = user.role==='PATIENT' && myConsultations.length ? `
    <section class="hf-section" style="margin-bottom:20px;">
     <h2>My Consultations & Visits (Visit History)</h2>
@@ -76,11 +143,12 @@ const HF = (() => {
    </section>` : '';
 
   $('hf-content').innerHTML=head(user.role==='PATIENT'?'Appointments & follow-ups':'Follow-ups','Follow-up encounters remain linked to the original visit.')+
+   quotaHtml+
    consultHistoryHtml+
    outpatient+
    table(['Due','Reason','Status','Action'],follow.map(f=>[date(f.due_at),e(f.reason),tag(f.status),f.status==='SCHEDULED'&&user.role==='PATIENT'&&f.doctor_id?button('Start linked intake',`HF.followIntake('${f.id}')`):'']))+
-   (user.role==='PATIENT'?form('hf-intake','Request a consultation',`<div class="hf-form-grid">${select('Doctor','doctor_id',options(doctors))}${select('Primary complaint','complaint',statuses(['Fever','Cough','Blood Pressure','Joint Pain','Weakness','Allergy','Other']))}${input('Duration','duration','number','1')}${select('Duration unit','duration_unit',statuses(['Days','Hours','Weeks','Months']))}${select('Severity','severity',statuses(['Mild','Moderate','Severe']))}</div><label>Describe your symptoms<textarea name="notes"></textarea></label><label>Warning symptoms (comma-separated)<input name="warnings" placeholder="e.g. breathing_difficulty, chest_pain"></label><div id="hf-branch"></div>`,'Submit intake'):empty('Choose an encounter to schedule a follow-up.'));
-  bind('hf-intake',async(d)=>{const branch={};document.querySelectorAll('#hf-branch [name]').forEach(n=>branch[n.name]=n.value);await api('intake/submit','POST',{patient_id:patientId,doctor_id:d.doctor_id,q1_chief_complaint:d.complaint,q2_duration_value:Number(d.duration),q2_duration_unit:d.duration_unit,q3_severity:d.severity,q10_additional_notes:d.notes,q9_warning_symptoms:d.warnings.split(',').map(x=>x.trim()).filter(Boolean),branch_responses:branch});await go('overview')});
+   (user.role==='PATIENT'?form('hf-intake','Request a consultation',`<div class="hf-form-grid">${select('Doctor','doctor_id',options(doctors))}${select('Primary complaint','complaint',statuses(['Fever','Cough','Blood Pressure','Joint Pain','Weakness','Allergy','Other']))}${input('Duration','duration','number','1')}${select('Duration unit','duration_unit',statuses(['Days','Hours','Weeks','Months']))}${select('Severity','severity',statuses(['Mild','Moderate','Severe']))}</div><label>Describe your symptoms<textarea name="notes"></textarea></label><label>Warning symptoms (comma-separated)<input name="warnings" placeholder="e.g. breathing_difficulty, chest_pain"></label><div id="hf-branch"></div>`,quota?.limit_reached?'Submit consultation (Emergency triage only)':'Submit intake'):empty('Choose an encounter to schedule a follow-up.'));
+  bind('hf-intake',async(d)=>{const branch={};document.querySelectorAll('#hf-branch [name]').forEach(n=>branch[n.name]=n.value);await api('intake/submit','POST',{patient_id:patientId,doctor_id:d.doctor_id,q1_chief_complaint:d.complaint,q2_duration_value:Number(d.duration),q2_duration_unit:d.duration_unit,q3_severity:d.severity,q10_additional_notes:d.notes,q9_warning_symptoms:d.warnings?d.warnings.split(',').map(x=>x.trim()).filter(Boolean):[],branch_responses:branch});showToast('Consultation request submitted!','success');await go('overview')});
   if($('hf-intake')){$('hf-intake').insertAdjacentHTML('beforebegin',form('hf-assist','Describe symptoms in your language',select('Language','language',statuses(['en','hi','mr','hinglish']))+input('Describe symptoms','message'),'Suggest intake fields'));bind('hf-assist',async d=>{const result=await api('ai/chatbot','POST',d),p=result.parsed_symptoms;if(p?.chief_complaint&&Array.from($('hf-intake').elements.complaint.options).some(o=>o.value===p.chief_complaint)){$('hf-intake').elements.complaint.value=p.chief_complaint;await intakeBranch(p.chief_complaint)}$('hf-intake').elements.notes.value=d.message;if(p?.warning_symptoms)$('hf-intake').elements.warnings.value=p.warning_symptoms.join(', ');showToast('Suggested fields added. Review before submitting.','info')});$('hf-intake').elements.complaint.onchange=()=>intakeBranch($('hf-intake').elements.complaint.value);await intakeBranch('Fever')}
  }
  async function intakeBranch(complaint){try{const result=await api('intake/branch/'+encodeURIComponent(complaint));const questions=result.questions||result.branch?.questions||[];$('hf-branch').innerHTML='<h3>Additional intake details</h3>'+questions.map(q=>{const name=q.id||q.key||q.question_id;return q.options?select(q.label||q.text||q.question||name,name,q.options.map(x=>`<option value="${e(typeof x==='object'?x.value:x)}">${e(typeof x==='object'?x.label:x)}</option>`).join('')):input(q.label||q.text||q.question||name,name,'text','',false)}).join('')}catch{$('hf-branch').innerHTML='<p class="hf-muted">Additional questions unavailable; the core intake form remains usable.</p>'}}
@@ -278,9 +346,103 @@ const HF = (() => {
   }catch(err){$('hf-facilities').innerHTML=`<div class="hf-error">${e(err.message)}</div>`}}
  function facility(i){const f=HF.facilities[i];dialog(f.name,`<p>${e(f.facility_type)} · ${e(f.is_registered?'Registered in PulseSync':'External map listing')}</p><p>${e(f.address)}</p><p>Distance: ${e(f.distance||'Unavailable')}</p><p>Contact: ${e(f.phone||'Not recorded')}</p><p>${e((f.availableMeds||[]).join(' · '))}</p>`)}
  function locate(){if(!navigator.geolocation){showToast('Geolocation is not supported by your browser; enter coordinates manually.','info');return}showToast('Acquiring your current GPS location...','info');navigator.geolocation.getCurrentPosition(p=>{const lat=p.coords.latitude;const lng=p.coords.longitude;if($('hf-lat'))$('hf-lat').value=lat;if($('hf-lng'))$('hf-lng').value=lng;userCurrentCoords={lat,lng};showToast('Current GPS location detected!','success');loadFacilities()},err=>{let msg='Location permission denied. Please allow location permissions in your browser or enter coordinates manually.';if(err.code===2)msg='Location unavailable. Please check your device GPS.';else if(err.code===3)msg='Location request timed out.';showToast(msg,'info')},{enableHighAccuracy:true,timeout:10000,maximumAge:60000})}
- async function consent(){const grants=await api('workflow/access/'+patientId);$('hf-content').innerHTML=head('Consent & QR access','Identification, clinical access, dispensing, and emergency access are separate.')+`<div class="hf-notice">A patient identification QR does not grant medical access. Provider grants expire and can be revoked. Emergency tokens reveal a limited profile only.</div><div class="hf-toolbar">${button('Identification QR','HF.identityQR()')}</div>`+form('hf-grant','Create temporary access',select('Scope','scope',statuses(['CLINICAL','PRESCRIPTION','EMERGENCY']))+`<label>Provider (not needed for emergency)<select name="provider_user_id"><option value="">Select provider</option>${providers.map(p=>`<option value="${e(p.user_id)}">${e(p.name)} · ${e(p.role)}</option>`).join('')}</select></label>`+PinAccess.field('Patient PIN (clinical / prescription consent)','pin')+input('Expiry in minutes (1–1440)','minutes','number','30'),'Create access QR')+table(['Scope','Provider','Expiry','State','Action'],grants.map(g=>[e(g.scope),e(providers.find(p=>p.user_id===g.user_id)?.name||'Emergency bearer'),date(g.expires_at),g.revoked_at?'Revoked':new Date(g.expires_at+'Z')<new Date()?'Expired':'Valid',!g.revoked_at?button('Revoke',`HF.revoke('${g.id}')`):'']));bind('hf-grant',async d=>{const data=await api('workflow/access/'+patientId,'POST',{pin:d.pin,scope:d.scope,provider_user_id:d.provider_user_id||null,minutes:Number(d.minutes)});dialog('Temporary access QR',`<img class="hf-qr" src="${e(data.qr_image_base64)}" alt="Temporary consent QR"><p>Expires ${date(data.grant.expires_at)}</p><textarea readonly style="width:100%;height:70px">${e(data.payload)}</textarea>`)});}
- async function myQR(){return user.role==='PATIENT'?identityQR():providerQR()}
+ async function consent(){const grants=await api('workflow/access/'+patientId);$('hf-content').innerHTML=head('Consent & QR access','Identification, clinical access, dispensing, and emergency access are separate.')+`<div class="hf-notice">A patient identification QR does not grant medical access. Provider grants expire and can be revoked. Emergency tokens reveal a limited profile only.</div><div class="hf-toolbar">${button('Identification QR','HF.identityQR()')} ${button('🏥 Hospital Admission QR','HF.admissionQR()')} ${button('🛡️ Health Insurance QR','HF.insuranceQR()')}</div>`+form('hf-grant','Create temporary access',select('Scope','scope',statuses(['CLINICAL','PRESCRIPTION','EMERGENCY']))+`<label>Provider (not needed for emergency)<select name="provider_user_id"><option value="">Select provider</option>${providers.map(p=>`<option value="${e(p.user_id)}">${e(p.name)} · ${e(p.role)}</option>`).join('')}</select></label>`+PinAccess.field('Patient PIN (clinical / prescription consent)','pin')+input('Expiry in minutes (1–1440)','minutes','number','30'),'Create access QR')+table(['Scope','Provider','Expiry','State','Action'],grants.map(g=>[e(g.scope),e(providers.find(p=>p.user_id===g.user_id)?.name||'Emergency bearer'),date(g.expires_at),g.revoked_at?'Revoked':new Date(g.expires_at+'Z')<new Date()?'Expired':'Valid',!g.revoked_at?button('Revoke',`HF.revoke('${g.id}')`):'']));bind('hf-grant',async d=>{const data=await api('workflow/access/'+patientId,'POST',{pin:d.pin,scope:d.scope,provider_user_id:d.provider_user_id||null,minutes:Number(d.minutes)});dialog('Temporary access QR',`<img class="hf-qr" src="${e(data.qr_image_base64)}" alt="Temporary consent QR"><p>Expires ${date(data.grant.expires_at)}</p><textarea readonly style="width:100%;height:70px">${e(data.payload)}</textarea>`)});}
+ async function myQR(){
+  if(user.role!=='PATIENT')return providerQR();
+  const m=familyMembers.find(f=>f.patient_id===patientId);
+  const name=m?m.full_name:user.name;
+  dialog('PulseSync Healthcare Passes & QR Codes',`
+   <div style="text-align:center;margin-bottom:16px;">
+    <h3 style="margin:0 0 6px 0;font-size:16px;color:#0f172a;">Active Profile: <strong>${e(name)}</strong></h3>
+    <p style="margin:0;font-size:13px;color:#64748b;">Choose which healthcare QR code or digital pass to display or share:</p>
+   </div>
+   <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:14px;">
+    <div style="background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:12px;padding:16px;text-align:center;display:flex;flex-direction:column;justify-content:space-between;">
+     <div>
+      <div style="font-size:28px;margin-bottom:6px;">🪪</div>
+      <h4 style="margin:0 0 6px 0;font-size:14px;color:#0f172a;">Patient ID QR</h4>
+      <p style="margin:0 0 12px 0;font-size:12px;color:#64748b;">Standard identity QR code for doctor check-ins and provider verification.</p>
+     </div>
+     <button type="button" class="hf-button primary" onclick="HF.identityQR()" style="width:100%;">Show ID QR</button>
+    </div>
+    <div style="background:#eff6ff;border:1.5px solid #bfdbfe;border-radius:12px;padding:16px;text-align:center;display:flex;flex-direction:column;justify-content:space-between;">
+     <div>
+      <div style="font-size:28px;margin-bottom:6px;">🏥</div>
+      <h4 style="margin:0 0 6px 0;font-size:14px;color:#1e40af;">Hospital Admission QR</h4>
+      <p style="margin:0 0 12px 0;font-size:12px;color:#64748b;">Fast-track hospital admission pass with ward pre-intake and medical profile.</p>
+     </div>
+     <button type="button" class="hf-button primary" style="background:#2563eb;width:100%;" onclick="HF.admissionQR()">Admission QR & Form</button>
+    </div>
+    <div style="background:#f0fdf4;border:1.5px solid #bbf7d0;border-radius:12px;padding:16px;text-align:center;display:flex;flex-direction:column;justify-content:space-between;">
+     <div>
+      <div style="font-size:28px;margin-bottom:6px;">🛡️</div>
+      <h4 style="margin:0 0 6px 0;font-size:14px;color:#166534;">Health Insurance QR</h4>
+      <p style="margin:0 0 12px 0;font-size:12px;color:#64748b;">Digital health insurance card, policy verification and claim pre-authorization.</p>
+     </div>
+     <button type="button" class="hf-button primary" style="background:#059669;width:100%;" onclick="HF.insuranceQR()">Insurance QR & Pass</button>
+    </div>
+   </div>`);
+ }
+ async function admissionQR(targetId){
+  const pid=targetId||patientId;
+  try{
+   const d=await api('qr/generate/'+pid+'/admission');
+   dialog('Hospital Admission QR Code',`
+    <div style="text-align:center;">
+     <img class="hf-qr" src="${e(d.qr_image_base64)}" alt="Hospital Admission QR" style="max-width:240px;margin:10px auto;border:1px solid #e2e8f0;padding:6px;border-radius:8px;background:#fff;">
+     <p style="font-weight:700;margin:8px 0;color:#0f172a;">${e(d.notice||'Fast-Track Hospital Admission Pass')}</p>
+     <p style="font-size:13px;color:#64748b;margin-bottom:14px;">Scan at hospital triage / admission desk to open the pre-filled admission intake form.</p>
+     <div style="margin-top:12px;display:flex;gap:10px;justify-content:center;flex-wrap:wrap;">
+      <a href="/qr/admission/${pid}" target="_blank" rel="noopener" class="hf-button primary" style="display:inline-block;padding:8px 16px;text-decoration:none;border-radius:8px;font-weight:600;background:#2563eb;color:#fff;">Open Admission Form</a>
+      <button type="button" class="hf-button" onclick="navigator.clipboard.writeText(location.origin+'/qr/admission/${pid}').then(()=>HF.showToast('Admission link copied!','success'))">Copy Direct Link</button>
+     </div>
+    </div>`);
+  }catch(err){showToast(err.message,'emergency')}
+ }
+ async function insuranceQR(targetId){
+  const pid=targetId||patientId;
+  try{
+   const d=await api('qr/generate/'+pid+'/insurance');
+   dialog('Health Insurance Pass & QR',`
+    <div style="text-align:center;">
+     <img class="hf-qr" src="${e(d.qr_image_base64)}" alt="Insurance Pass QR" style="max-width:240px;margin:10px auto;border:1px solid #e2e8f0;padding:6px;border-radius:8px;background:#fff;">
+     <p style="font-weight:700;margin:8px 0;color:#0f172a;">${e(d.notice||'Digital Health Insurance Pass')}</p>
+     <p style="font-size:13px;color:#64748b;margin-bottom:14px;">Scan at billing or TPA desk for instant policy verification and pre-authorization claim filing.</p>
+     <div style="margin-top:12px;display:flex;gap:10px;justify-content:center;flex-wrap:wrap;">
+      <a href="/qr/insurance/${pid}" target="_blank" rel="noopener" class="hf-button primary" style="display:inline-block;padding:8px 16px;text-decoration:none;border-radius:8px;font-weight:600;background:#059669;color:#fff;">Open Digital Insurance Pass</a>
+      <button type="button" class="hf-button" onclick="navigator.clipboard.writeText(location.origin+'/qr/insurance/${pid}').then(()=>HF.showToast('Insurance link copied!','success'))">Copy Direct Link</button>
+     </div>
+    </div>`);
+  }catch(err){showToast(err.message,'emergency')}
+ }
  async function scanResult(text){
+  const admMatch=text.match(/^PULSESYNC:ADMISSION:([A-Za-z0-9_-]+)$/)||text.match(/\/qr\/admission\/([A-Za-z0-9_-]+)/);
+  if(admMatch){
+   QRTools.close();
+   const pid=admMatch[1];
+   dialog('Hospital Admission Card',`
+    <p><strong>Fast-Track Admission Form</strong></p>
+    <p>Patient ID: ${e(pid)}</p>
+    <p>Open the verified Hospital Admission & Ward Pre-Admission form with one-touch bed admission and medical chart access.</p>
+    <div style="margin-top:14px;display:flex;gap:10px;flex-wrap:wrap;">
+     <a href="/qr/admission/${pid}" target="_blank" rel="noopener" class="primary" style="display:inline-block;padding:8px 16px;text-decoration:none;border-radius:8px;background:#2563eb;color:#fff;font-weight:600;">Open Admission Form</a>
+     ${user.role==='HOSPITAL_ADMIN'?button('Admit to Ward',`HF.go('beds')`):''}
+    </div>`);
+   return 'Admission QR recognized.';
+  }
+  const insMatch=text.match(/^PULSESYNC:INSURANCE:([A-Za-z0-9_-]+)$/)||text.match(/\/qr\/insurance\/([A-Za-z0-9_-]+)/);
+  if(insMatch){
+   QRTools.close();
+   const pid=insMatch[1];
+   dialog('Digital Health Insurance Card',`
+    <p><strong>Health Insurance Pass & Pre-Authorization</strong></p>
+    <p>Patient ID: ${e(pid)}</p>
+    <p>View verified policy credentials, coverage limits, TPA details, and submit direct pre-authorization claims.</p>
+    <div style="margin-top:14px;">
+     <a href="/qr/insurance/${pid}" target="_blank" rel="noopener" class="primary" style="display:inline-block;padding:8px 16px;text-decoration:none;border-radius:8px;background:#059669;color:#fff;font-weight:600;">Open Digital Insurance Pass</a>
+    </div>`);
+   return 'Insurance QR recognized.';
+  }
   const identity=text.match(/^PULSESYNC:(?:INSURANCE:)?IDENTITY:([A-Za-z0-9_-]+)$/);
   if(identity){
    if(!['DOCTOR','HOSPITAL_ADMIN','PHARMACY'].includes(user.role))throw new Error('Access not authorized: patient identity requests are available to providers.');
@@ -343,7 +505,120 @@ const HF = (() => {
  async function scannedDoctor(id){$('hf-dialog').close();await go('appointments');const field=$('hf-request')?.querySelector('[name="doctor_id"]')||document.querySelector('#hf-content select[name="doctor_id"]');if(field){field.value=id;field.scrollIntoView({block:'center'});field.focus()}}
  async function identityQR(){try{const d=await api('qr/generate/'+patientId+'/identity');dialog('Patient identification',`<img class="hf-qr" src="${e(d.qr_image_base64)}" alt="Patient identification QR"><p>${e(d.notice)}</p><code>${e(d.token_payload)}</code>`)}catch(err){showToast(err.message,'emergency')}}
  async function revoke(id){if(!confirm('Revoke this access grant immediately?'))return;try{await api('workflow/access/'+id,'DELETE');await go('consent')}catch(err){showToast(err.message,'emergency')}}
- async function profile(){const [hist,al]=await Promise.all([api('workflow/history/'+patientId),api('workflow/allergies/'+patientId)]);const p=hist.patient;$('hf-content').innerHTML=head('Patient profile',p.full_name)+form('hf-profile','Current information',input('Blood group','blood_group','text',p.blood_group||'',false)+input('Chronic conditions (patient reported; comma-separated)','existing_conditions','text',(p.existing_conditions||[]).join(', '),false)+input('Emergency contact','emergency_contact_name','text',p.emergency_contact_name||'',false)+input('Emergency phone','emergency_contact_phone','tel',p.emergency_contact_phone||'',false)+input('Address','address','text',p.address||'',false)+input('City','city','text',p.city||'',false)+`<label><input name="confirm_current" type="checkbox">I confirm this information is current.</label>`)+`<section class="hf-section"><h2>Insurance information</h2><p>${e(p.insurance_provider||'Provider not recorded')} · Policy ${e(p.insurance_policy_no||'Not recorded')}</p><p class="hf-muted">${p.has_insurance?'Patient-reported coverage':'No coverage recorded'} · ${p.insurance_claimed?'Claim reported':'No claim reported'} · No external verification</p></section><h2>Allergy records</h2>${table(['Substance','Reaction','Severity','Source / confirmation'],al.records.map(a=>[e(a.substance),e(a.reaction||'Not recorded'),tag(a.severity),e(a.source)+`<small>${date(a.last_verified_at)}</small>`]))}<p class="hf-muted">Registration-reported allergies: ${e(al.reported.join(', ')||'Not recorded')}</p>`+form('hf-allergy','Add allergy',input('Substance','substance')+input('Reaction','reaction','text','',false)+select('Severity','severity',statuses(['UNKNOWN','MILD','MODERATE','SEVERE'])));bind('hf-profile',async d=>{d.existing_conditions=d.existing_conditions.split(',').map(x=>x.trim()).filter(Boolean);d.confirm_current=d.confirm_current==='on';await api('workflow/profile','PATCH',d);await go('profile')});bind('hf-allergy',async d=>{await api('workflow/allergies','POST',{...d,patient_id:patientId});await go('profile')})}
+ async function profile(){
+  const [hist,al]=await Promise.all([api('workflow/history/'+patientId),api('workflow/allergies/'+patientId)]);
+  const p=hist.patient;
+  const familyHtml=user.role==='PATIENT'&&familyMembers.length?`
+   <section class="hf-section" style="margin-top:24px;border:1.5px solid #cbd5e1;border-radius:12px;padding:16px;background:#f8fafc;">
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:12px;">
+     <div>
+      <h2 style="margin:0 0 4px 0;font-size:17px;color:#0f172a;">👨‍👩‍👧‍👦 Family & Dependent Accounts</h2>
+      <p class="hf-muted" style="margin:0;font-size:13px;">Manage linked accounts for your children (&lt;18) and elderly parents (60+) under this primary login.</p>
+     </div>
+     <button type="button" class="primary" onclick="HF.addFamilyModal()">+ Add Child / Elderly Profile</button>
+    </div>
+    ${table(['Profile Name','Relationship','Age','Blood Group','Active Profile','Passes & QR Codes'],familyMembers.map(m=>[
+     `<strong>${e(m.full_name)}</strong>${m.is_primary?' <span style="font-size:10px;background:#e0e7ff;color:#3730a3;padding:2px 6px;border-radius:4px;font-weight:700;">PRIMARY</span>':''}`,
+     tag(m.relationship_type),
+     `${m.age} years`,
+     e(m.blood_group||'Not recorded'),
+     m.patient_id===patientId?'<span class="hf-status" style="background:#dcfce7;color:#15803d;font-weight:700;">Active Now</span>':button('Switch Profile',`HF.switchFamily('${m.patient_id}')`),
+     `<div style="display:flex;gap:6px;flex-wrap:wrap;">
+       ${button('🏥 Admission QR',`HF.admissionQR('${m.patient_id}')`)}
+       ${button('🛡️ Insurance QR',`HF.insuranceQR('${m.patient_id}')`)}
+      </div>`
+    ]))}
+   </section>`:'';
+$('hf-content').innerHTML=head('Patient profile',p.full_name)+form('hf-profile','Current information',input('Blood group','blood_group','text',p.blood_group||'',false)+input('Chronic conditions (patient reported; comma-separated)','existing_conditions','text',(p.existing_conditions||[]).join(', '),false)+input('Emergency contact','emergency_contact_name','text',p.emergency_contact_name||'',false)+input('Emergency phone','emergency_contact_phone','tel',p.emergency_contact_phone||'',false)+input('Address','address','text',p.address||'',false)+input('City','city','text',p.city||'',false)+`<label><input name="confirm_current" type="checkbox">I confirm this information is current.</label>`)+familyHtml+`<section class="hf-section"><h2>Insurance information</h2><p>${e(p.insurance_provider||'Provider not recorded')} · Policy ${e(p.insurance_policy_no||'Not recorded')}</p><p class="hf-muted">${p.has_insurance?'Patient-reported coverage':'No coverage recorded'} · ${p.insurance_claimed?'Claim reported':'No claim reported'} · No external verification</p></section><h2>Allergy records</h2>${table(['Substance','Reaction','Severity','Source / confirmation'],al.records.map(a=>[e(a.substance),e(a.reaction||'Not recorded'),tag(a.severity),e(a.source)+`<small>${date(a.last_verified_at)}</small>`]))}<p class="hf-muted">Registration-reported allergies: ${e(al.reported.join(', ')||'Not recorded')}</p>`+form('hf-allergy','Add allergy',input('Substance','substance')+input('Reaction','reaction','text','',false)+select('Severity','severity',statuses(['UNKNOWN','MILD','MODERATE','SEVERE'])));bind('hf-profile',async d=>{d.existing_conditions=d.existing_conditions.split(',').map(x=>x.trim()).filter(Boolean);d.confirm_current=d.confirm_current==='on';await api('workflow/profile','PATCH',d);await go('profile')});bind('hf-allergy',async d=>{await api('workflow/allergies','POST',{...d,patient_id:patientId});await go('profile')})}
+ function addFamilyModal(){
+  dialog('Add Child or Elderly Family Account',`
+   <form id="hf-add-family-form" style="display:flex;flex-direction:column;gap:12px;">
+    <p class="hf-muted" style="font-size:13px;margin:0 0 8px 0;">Create a managed healthcare profile under your primary account. Both children and senior citizens can have dedicated admission forms, insurance passes, and independent medical histories.</p>
+    <div class="hf-form-grid">
+     <label>Relationship Type
+      <select name="relationship_type" required onchange="HF.updateFamilyFields(this.value)">
+       <option value="CHILD">Child / Minor (&lt;18 years)</option>
+       <option value="ELDERLY_PARENT">Elderly Parent / Senior Citizen (60+ years)</option>
+       <option value="SPOUSE">Spouse / Partner</option>
+       <option value="OTHER_DEPENDENT">Other Dependent</option>
+      </select>
+     </label>
+     <label>Full Legal Name<input name="full_name" placeholder="e.g. Aarav Sharma" required></label>
+     <label>Age (years)<input name="age" id="family-form-age" type="number" min="0" max="130" value="8" required></label>
+     <label>Gender
+      <select name="gender" required>
+       <option value="MALE">Male</option>
+       <option value="FEMALE">Female</option>
+       <option value="OTHER">Other</option>
+      </select>
+     </label>
+     <label>Blood Group
+      <select name="blood_group">
+       <option value="UNKNOWN">Unknown</option>
+       <option value="A+">A+</option>
+       <option value="A-">A-</option>
+       <option value="B+">B+</option>
+       <option value="B-">B-</option>
+       <option value="AB+">AB+</option>
+       <option value="AB-">AB-</option>
+       <option value="O+" selected>O+</option>
+       <option value="O-">O-</option>
+      </select>
+     </label>
+     <label>6-Digit PIN (for this profile)<input name="pin" type="password" maxlength="6" pattern="\\d{6}" value="123456" required style="letter-spacing:3px;"></label>
+    </div>
+    <div style="font-size:12px;color:#2563eb;margin-top:-4px;" id="family-form-hint">Tip: For children under 18, guardian consent is managed through your primary account.</div>
+    <div class="hf-form-grid" style="margin-top:6px;">
+     <label>Chronic / Existing Conditions (optional)<input name="existing_conditions" placeholder="e.g. Asthma, Childhood allergies"></label>
+     <label>Allergies (comma-separated)<input name="allergies" placeholder="e.g. Peanuts, Penicillin"></label>
+     <label>Insurance Provider (optional)<input name="insurance_provider" placeholder="e.g. Star Health, HDFC ERGO"></label>
+     <label>Insurance Policy No. (optional)<input name="insurance_policy_no" placeholder="e.g. SH-9923842"></label>
+    </div>
+    <button type="submit" class="primary" style="margin-top:10px;padding:10px;">Create Profile & Link to My Account</button>
+    <div class="form-message" role="status"></div>
+   </form>`);
+  bind('hf-add-family-form',async d=>{
+   const payload={
+    relationship_type:d.relationship_type,
+    full_name:d.full_name,
+    age:Number(d.age),
+    gender:d.gender,
+    blood_group:d.blood_group,
+    pin:d.pin,
+    existing_conditions:d.existing_conditions?d.existing_conditions.split(',').map(s=>s.trim()).filter(Boolean):[],
+    allergies:d.allergies?d.allergies.split(',').map(s=>s.trim()).filter(Boolean):[],
+    insurance_provider:d.insurance_provider||null,
+    insurance_policy_no:d.insurance_policy_no||null
+   };
+   const res=await api('workflow/family','POST',payload);
+   showToast('Family profile for '+d.full_name+' created!','success');
+   await loadFamily();
+   patientId=res.patient_id;
+   localStorage.setItem('hf-active-patient:'+user.id,patientId);
+   $('hf-dialog').close();
+   await go('profile');
+  });
+ }
+ function updateFamilyFields(rel){
+  const ageInput=$('family-form-age'),hint=$('family-form-hint');
+  if(!ageInput||!hint)return;
+  if(rel==='CHILD'){
+   ageInput.value='8';
+   ageInput.max='17';
+   ageInput.min='0';
+   hint.textContent='Tip: Minor account (under 18). Guardian consent and intake are authorized by you.';
+  }else if(rel==='ELDERLY_PARENT'){
+   ageInput.value='68';
+   ageInput.min='50';
+   ageInput.max='130';
+   hint.textContent='Tip: Senior Citizen profile (60+). Linked to your account for care coordination, admission forms, and visits.';
+  }else{
+   ageInput.value='35';
+   ageInput.min='18';
+   ageInput.max='120';
+   hint.textContent='Tip: Managed family profile linked to your primary account.';
+  }
+ }
  async function notifications(){const ns=await api('workflow/notifications');$('hf-content').innerHTML=head('Notifications','Care updates and upcoming follow-ups')+table(['Date','Update','Status','Action'],ns.map(n=>[date(n.created_at),e(n.message),tag(n.status),n.status==='UNREAD'?button('Mark read',`HF.read('${n.id}')`):'']));}
  async function read(id){try{await api('workflow/notifications/'+id,'PATCH');await go('notifications')}catch(err){showToast(err.message,'emergency')}}
  async function audit(){const rows=await api('workflow/audit/'+patientId);$('hf-content').innerHTML=head('Record access log','Who accessed or changed your records')+table(['Time','Person','Action','Resource'],rows.map(a=>[date(a.created_at),e(a.user_name),e(a.action.replaceAll('_',' ')),e(a.resource||'')]));}
@@ -386,5 +661,5 @@ const HF = (() => {
 
 
  function externalLetter(i,download){const r=lastRecord.note.referrals[i],v=lastRecord.visit;const content=`<h1>Hospital referral letter</h1><p>Patient: ${e(v.patient)} · Visit: ${date(v.date)}</p><p>Referring doctor: ${e(v.doctor)} · ${e(v.facility||'Facility not recorded')}</p><h2>${e(r.name)}</h2><p>${e(r.address)} · ${e(r.specialty)} · ${e(r.priority)}</p><p>Reason: ${e(r.reason)}</p><p>Clinical summary: ${e(r.clinical_summary)}</p><p>Preferred time: ${date(r.preferred_at)}</p><p>External hospital: no notification or appointment booking occurred.</p>`;const html='<!doctype html><meta charset="utf-8"><title>Referral letter</title><body style="font:16px Arial;margin:40px;line-height:1.6">'+content+'</body>';if(download){const url=URL.createObjectURL(new Blob([html],{type:'text/html'}));const a=document.createElement('a');a.href=url;a.download='HealthFlow-referral-letter.html';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)}else{const w=window.open('','_blank');if(!w){showToast('Allow pop-ups to print','info');return}w.document.write(html);w.document.close();w.print();}}
- return {filterConsultationView,requestScannedAccess,checkScannedAccess,startScannedConsultation,externalLetter,doctorsNote,renderNote,decisionForm,generateMedRows,addMedRow,removeDecision,referralForm,searchVisitHospitals,chooseVisitHospital,saveNote,reviewNote,finalizeNote,completeVisit,printVisit,downloadVisit,respondAppointment,myQR,scanResult,scannedDoctor,mount,go,relatedRecord,emergencyAccess,filterHistory,resetHistory,linkedEncounter,encounter,recordDoc,printRecord,correctRecord,summarize,summaryHistory,approveSummary,versions,followIntake,currentSummary,dispense,medicationReview,stopMedication,advanceReferral,referralDetail,specialist,createSpecialist,patientHistory,discharge,bedStatus,invitation,download,documentError,loadFacilities,facility,locate,identityQR,revoke,read,restock,providerQR,pickLocation};
+ return {filterConsultationView,requestScannedAccess,checkScannedAccess,startScannedConsultation,externalLetter,doctorsNote,renderNote,decisionForm,generateMedRows,addMedRow,removeDecision,referralForm,searchVisitHospitals,chooseVisitHospital,saveNote,reviewNote,finalizeNote,completeVisit,printVisit,downloadVisit,respondAppointment,myQR,scanResult,scannedDoctor,mount,go,relatedRecord,emergencyAccess,filterHistory,resetHistory,linkedEncounter,encounter,recordDoc,printRecord,correctRecord,summarize,summaryHistory,approveSummary,versions,followIntake,currentSummary,dispense,medicationReview,stopMedication,advanceReferral,referralDetail,specialist,createSpecialist,patientHistory,discharge,bedStatus,invitation,download,documentError,loadFacilities,facility,locate,identityQR,revoke,read,restock,providerQR,pickLocation,admissionQR,insuranceQR,switchFamily,addFamilyModal,updateFamilyFields};
 })();

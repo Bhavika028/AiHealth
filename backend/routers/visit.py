@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from ..database import get_db
 from ..models import Patient, Doctor, Hospital, Clinic, Prescription, DoctorNote, Consultation, PharmacyStore
 from ..workflow_models import ConsultationPlan, OutpatientAppointment, Medication, Referral, Diagnosis, Vital, Document, FollowUp, MedicalEvent, Allergy, AccessRequest, AccessGrant, ConsultationAuthorization, AuditLog, Notification
-from ..security import current_user, encounter_access, entity, require_role
+from ..security import current_user, encounter_access, entity, require_role, check_daily_visit_limit
 from ..pin_security import verify_pin, check_lock
 from .workflow import serial, migrate_patient_records, version, event, notify
 router=APIRouter(prefix='/api/workflow',tags=['Consultation decisions'])
@@ -256,6 +256,8 @@ def patient_scan_doctor(body: PatientScanDoctorConsultation, db: Session = Depen
     doctor = db.get(Doctor, body.doctor_id)
     if not doctor or not doctor.user_id:
         raise HTTPException(404, 'Doctor not found')
+
+    check_daily_visit_limit(db, patient.id, is_urgent=(body.severity == 'Severe'))
 
     import secrets, hashlib
     now = datetime.utcnow()

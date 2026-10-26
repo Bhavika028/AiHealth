@@ -9,9 +9,9 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel, Field
 from typing import Optional, Literal
 from ..database import get_db
-from ..models import Patient, Doctor, Hospital, PharmacyStore, Consultation, Prescription, DoctorNote, WardAndBed, Inventory, User
+from ..models import Patient, Doctor, Hospital, PharmacyStore, Consultation, Prescription, DoctorNote, WardAndBed, Inventory, User, FamilyMember
 from ..workflow_models import *
-from ..security import approved_request, current_user, patient_access, encounter_access, entity, require_role
+from ..security import approved_request, current_user, patient_access, encounter_access, entity, require_role, check_daily_visit_limit, get_patient_daily_visit_count, DAILY_VISIT_LIMIT
 
 router = APIRouter(prefix='/api/workflow', tags=['Longitudinal workflow'])
 UPLOAD_ROOT = Path(os.getenv('UPLOAD_DIR', str(Path(__file__).resolve().parents[2] / 'uploads'))).resolve()
@@ -135,17 +135,157 @@ class EncounterCreate(BaseModel):
     patient_id: Optional[str]=None
     chief_complaint: str=Field(min_length=1,max_length=128)
     severity: str='Moderate'
+    is_urgent: bool=False
     patient_notes: Optional[str]=None
     previous_consultation_id: Optional[str]=None
     referral_id: Optional[str]=None
     follow_up_id: Optional[str]=None
     access_request_id: Optional[str]=None
 
+class FamilyMemberCreate(BaseModel):
+    full_name: str = Field(min_length=2)
+    relationship_type: Literal['CHILD', 'ELDERLY_PARENT', 'SPOUSE', 'OTHER']
+    age: int = Field(ge=0, le=125)
+    gender: str = 'Other'
+    blood_group: Optional[str] = None
+    existing_conditions: list[str] = Field(default_factory=list)
+    allergies: list[str] = Field(default_factory=list)
+    has_insurance: bool = False
+    insurance_provider: Optional[str] = None
+    insurance_policy_no: Optional[str] = None
+    emergency_contact_phone: Optional[str] = None
+
+@router.get('/family')
+def get_family_members(db: Session = Depends(get_db), user = Depends(current_user)):
+    require_role(user, 'PATIENT')
+    primary_patient = entity(db, user, Patient)
+    members = db.query(FamilyMember).filter_by(primary_user_id=user.id).all()
+    result = [{
+        'id': 'primary',
+        'is_primary': True,
+        'patient_id': primary_patient.id,
+        'relationship_type': 'SELF',
+        'full_name': primary_patient.full_name,
+        'age': primary_patient.age,
+        'gender': primary_patient.gender,
+        'blood_group': primary_patient.blood_group,
+        'is_child': primary_patient.is_child,
+        'existing_conditions': primary_patient.existing_conditions or [],
+        'allergies': primary_patient.allergies or [],
+        'has_insurance': primary_patient.has_insurance,
+        'insurance_provider': primary_patient.insurance_provider,
+        'insurance_policy_no': primary_patient.insurance_policy_no
+    }]
+    for m in members:
+        p = m.patient
+        if not p: continue
+        result.append({
+            'id': m.id,
+            'is_primary': False,
+            'patient_id': p.id,
+            'relationship_type': m.relationship_type,
+            'full_name': p.full_name,
+            'age': p.age,
+            'gender': p.gender,
+            'blood_group': p.blood_group,
+            'is_child': p.is_child,
+            'existing_conditions': p.existing_conditions or [],
+            'allergies': p.allergies or [],
+            'has_insurance': p.has_insurance,
+            'insurance_provider': p.insurance_provider,
+            'insurance_policy_no': p.insurance_policy_no
+        })
+    return result
+
+@router.post('/family')
+def create_family_member(body: FamilyMemberCreate, db: Session = Depends(get_db), user = Depends(current_user)):
+    require_role(user, 'PATIENT')
+    primary_patient = entity(db, user, Patient)
+    existing_fam = db.query(FamilyMember).filter_by(primary_user_id=user.id).all()
+    for ef in existing_fam:
+        if ef.patient and ef.patient.full_name.strip().casefold() == body.full_name.strip().casefold():
+            raise HTTPException(409, f"Family profile for '{body.full_name}' already exists.")
+
+    import uuid
+    sub_user = User(
+        id=str(uuid.uuid4()),
+        name=body.full_name.strip(),
+        email=f"family_{uuid.uuid4().hex[:12]}@pulsesync.local",
+        phone=user.phone,
+        role="PATIENT",
+        pin_hash=user.pin_hash,
+        is_active=True
+    )
+    db.add(sub_user)
+    db.flush()
+
+    is_child = (body.relationship_type == 'CHILD' or body.age < 18)
+    dep_patient = Patient(
+        id=str(uuid.uuid4()),
+        user_id=sub_user.id,
+        full_name=body.full_name.strip(),
+        age=body.age,
+        gender=body.gender,
+        blood_group=body.blood_group,
+        is_child=is_child,
+        parent_guardian_name=user.name,
+        parent_guardian_phone=user.phone,
+        emergency_contact_name=user.name,
+        emergency_contact_phone=user.phone,
+        address=primary_patient.address,
+        city=primary_patient.city,
+        existing_conditions=body.existing_conditions or [],
+        allergies=body.allergies or [],
+        has_insurance=body.has_insurance,
+        insurance_provider=body.insurance_provider,
+        insurance_policy_no=body.insurance_policy_no
+    )
+    db.add(dep_patient)
+    db.flush()
+
+    fam = FamilyMember(
+        id=str(uuid.uuid4()),
+        primary_user_id=user.id,
+        patient_id=dep_patient.id,
+        relationship_type=body.relationship_type
+    )
+    db.add(fam)
+    db.commit()
+
+    return {
+        'success': True,
+        'message': f"Dependent account for {body.full_name} ({body.relationship_type}) created successfully.",
+        'family_member': {
+            'id': fam.id,
+            'patient_id': dep_patient.id,
+            'relationship_type': fam.relationship_type,
+            'full_name': dep_patient.full_name,
+            'age': dep_patient.age,
+            'is_child': is_child
+        }
+    }
+
+@router.get('/daily-quota/{patient_id}')
+def get_workflow_daily_quota(patient_id: str, db: Session = Depends(get_db), user = Depends(current_user)):
+    patient_access(db, user, patient_id)
+    count = get_patient_daily_visit_count(db, patient_id)
+    limit = DAILY_VISIT_LIMIT
+    return {
+        "patient_id": patient_id,
+        "visits_today": count,
+        "max_visits_per_day": limit,
+        "remaining_visits": max(0, limit - count),
+        "limit_reached": count >= limit
+    }
+
 @router.post('/consultations')
 def create_encounter(body: EncounterCreate,db: Session=Depends(get_db),user=Depends(current_user)):
     require_role(user,'PATIENT','DOCTOR','HOSPITAL_ADMIN')
-    pid=entity(db,user,Patient).id if user.role=='PATIENT' else body.patient_id
+    pid=body.patient_id if (user.role=='PATIENT' and body.patient_id) else (entity(db,user,Patient).id if user.role=='PATIENT' else body.patient_id)
     p=patient_access(db,user,pid)
+    is_urgent = body.is_urgent or (body.severity == 'Severe') or bool(body.follow_up_id) or bool(body.referral_id)
+    if user.role == 'PATIENT':
+        check_daily_visit_limit(db, pid, is_urgent=is_urgent)
     authorization=approved_request(db,user,pid,body.access_request_id) if user.role=='DOCTOR' else None
     if user.role=='DOCTOR' and not body.access_request_id:
         raise HTTPException(403,'Select an approved consultation access request')
@@ -174,7 +314,7 @@ def create_encounter(body: EncounterCreate,db: Session=Depends(get_db),user=Depe
         body.previous_consultation_id=follow.consultation_id
     c=Consultation(patient_id=pid,doctor_id=doc.id if doc else None,clinic_id=doc.clinic_id if doc else None,
         hospital_id=hid,referral_id=body.referral_id,created_by=user.id,chief_complaint=body.chief_complaint,
-        symptom_severity=body.severity,patient_notes=body.patient_notes,status='WAITING',
+        symptom_severity=body.severity,patient_notes=body.patient_notes,status='WAITING',is_urgent=is_urgent,
         previous_consultation_id=body.previous_consultation_id,is_repeat_visit=bool(body.previous_consultation_id))
     db.add(c);db.flush()
     if authorization:
@@ -190,9 +330,15 @@ def create_encounter(body: EncounterCreate,db: Session=Depends(get_db),user=Depe
     return serial(c)
 
 @router.get('/consultations')
-def consultations(db: Session=Depends(get_db),user=Depends(current_user)):
+def consultations(db: Session=Depends(get_db),user=Depends(current_user),patient_id: Optional[str] = None):
     q=db.query(Consultation)
-    if user.role=='PATIENT': q=q.filter_by(patient_id=entity(db,user,Patient).id)
+    if user.role=='PATIENT':
+        if patient_id:
+            patient_access(db, user, patient_id)
+            q=q.filter_by(patient_id=patient_id)
+        else:
+            pids = [entity(db, user, Patient).id] + [m.patient_id for m in db.query(FamilyMember).filter_by(primary_user_id=user.id).all()]
+            q=q.filter(Consultation.patient_id.in_(pids))
     elif user.role=='DOCTOR': q=q.filter_by(doctor_id=entity(db,user,Doctor).id)
     elif user.role=='HOSPITAL_ADMIN': q=q.filter_by(hospital_id=entity(db,user,Hospital).id)
     else: raise HTTPException(403,'Clinical role required')

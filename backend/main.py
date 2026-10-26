@@ -74,6 +74,11 @@ def qr_patient_card(patient_id: str, db: Session = Depends(get_db)):
 def qr_insurance_card(patient_id: str, db: Session = Depends(get_db)):
     return qr_engine.view_insurance_public_card(patient_id, db)
 
+@app.get("/qr/admission/{patient_id}")
+def qr_admission_card(patient_id: str, db: Session = Depends(get_db)):
+    return qr_engine.view_admission_public_card(patient_id, db)
+
+
 # Health & Metrics Endpoint
 @app.get("/api/health")
 def health_check():

@@ -608,3 +608,31 @@ class PatientQRToken(Base):
             "expires_at": self.expires_at.isoformat() if self.expires_at else None,
             "is_active": self.is_active
         }
+
+
+# ==============================================================================
+# 11. FAMILY MEMBERS & DEPENDENTS (Children, Elderly Parents)
+# ==============================================================================
+class FamilyMember(Base):
+    __tablename__ = "family_members"
+
+    id = Column(String(64), primary_key=True, default=generate_uuid)
+    primary_user_id = Column(String(64), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    patient_id = Column(String(64), ForeignKey("patients.id", ondelete="CASCADE"), nullable=False, index=True)
+    relationship_type = Column(String(32), nullable=False)  # "CHILD", "ELDERLY_PARENT", "SPOUSE", "OTHER"
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    # Relationships
+    primary_user = relationship("User", foreign_keys=[primary_user_id])
+    patient = relationship("Patient", foreign_keys=[patient_id])
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "id": self.id,
+            "primary_user_id": self.primary_user_id,
+            "patient_id": self.patient_id,
+            "relationship_type": self.relationship_type,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "patient": self.patient.to_dict() if self.patient else None
+        }
+
