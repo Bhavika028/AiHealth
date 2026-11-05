@@ -43,7 +43,7 @@ def create_active_engine(db_url: str):
             max_overflow=20,
             pool_recycle=300,
             pool_pre_ping=True,
-            connect_args={"connect_timeout": 2} if "postgresql" in db_url else {}
+            connect_args={"connect_timeout": 10} if "postgresql" in db_url else {}
         )
         # Verify connection
         with test_engine.connect() as conn:
@@ -51,7 +51,8 @@ def create_active_engine(db_url: str):
         logger.info(f"[DB] Connected successfully to remote database ({db_url.split('@')[-1] if '@' in db_url else db_url})")
         return test_engine, db_url
     except Exception as exc:
-        raise RuntimeError("Configured database connection failed. Check DATABASE_URL; automatic database switching is disabled.") from None
+        logger.warning(f"[DB] Remote database connection failed ({exc}). Falling back to local SQLite (sqlite:///./pulsesync.db).")
+        return create_engine("sqlite:///./pulsesync.db", connect_args={"check_same_thread": False}), "sqlite:///./pulsesync.db"
 
 engine, ACTIVE_DATABASE_URL = create_active_engine(RAW_DATABASE_URL)
 DATABASE_URL = ACTIVE_DATABASE_URL
